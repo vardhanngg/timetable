@@ -1,84 +1,84 @@
 Total lab periods: 7
 hii
-printing  [[5, 3, 5, 5, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [5, 0, 5, 5, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 0, 0, 5, 0, 0, 5, 5, 5, 5, 0, 0, 0, 0, 0, 5, 0, 0, 0, 5, 0, 0, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 0, 0, 2, 5, 0, 5, 5, 5, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 5, 5, 0, 0, 0, 5, 0, 5, 0, 0, 5, 0, 0, 5, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 2, 5, 0, 0, 0, 5, 0, 3, 3, 2, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 0, 0, 0, 0, 0, 5, 5, 3, 3, 0, 5, 0, 0, 5, 5, 0, 0, 0, 0, 0, 0, 0, 5, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 0, 0, 0, 0, 0, 0, 5, 3, 3, 0, 0, 0, 5, 5, 5, 5, 0, 0, 0, 0, 0, 0, 0, 5, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]]]
+printing  [[5, 3, 5, 5, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [5, 2, 5, 5, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 0, 0, 5, 0, 0, 5, 5, 5, 5, 0, 0, 0, 0, 0, 5, 0, 0, 0, 5, 0, 0, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 0, 0, 2, 5, 0, 5, 5, 5, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 5, 5, 0, 0, 0, 5, 0, 5, 0, 0, 5, 0, 0, 5, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 2, 5, 0, 0, 0, 5, 0, 3, 3, 2, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 0, 0, 0, 0, 0, 5, 5, 3, 3, 0, 5, 0, 0, 5, 5, 0, 0, 0, 0, 0, 0, 0, 5, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 0, 0, 0, 0, 0, 0, 5, 3, 3, 0, 0, 0, 5, 5, 5, 5, 0, 0, 0, 0, 0, 0, 0, 5, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]]]
 hi
-Assigned lab session 1 for class 1 with teacher 1 at periods 2 to 3
-Assigned lab session 2 for class 1 with teacher 1 at periods 11 to 12
-Assigned lab session 1 for class 5 with teacher 5 at periods 16 to 17
-Assigned lab session 2 for class 5 with teacher 5 at periods 25 to 26
-Assigned lab session 3 for class 5 with teacher 5 at periods 34 to 35
-Assigned lab session 1 for class 2 with teacher 2 at periods 11 to 11
-Assigned lab session 2 for class 2 with teacher 2 at periods 12 to 12
+Assigned lab session 1 for class 1 with teacher 1 at periods 7 to 8
+Assigned lab session 2 for class 1 with teacher 1 at periods 3 to 4
+Assigned lab session 1 for class 5 with teacher 5 at periods 11 to 12
+Assigned lab session 2 for class 5 with teacher 5 at periods 32 to 33
+Assigned lab session 3 for class 5 with teacher 5 at periods 28 to 29
+Assigned lab session 1 for class 2 with teacher 2 at periods 24 to 24
+Assigned lab session 2 for class 2 with teacher 2 at periods 29 to 29
 
 ========== Class 0 ==========
         P  1   P  2   P  3   P  4   P  5   P  6   
-Monday     f1     f1     f1     f1   Kavita   f1   
-Tuesday  Kavita   f1    Anil  Kavita  Anil   Pooja 
-Wednesday Manoj  Anil   Aditi Kavita  Anil   Aditi 
-Thursday  foyer  Pooja  Aditi   f1    Manoj  Manoj 
-Friday    Pooja Sanjay  Aditi Sanjay  Pooja  Manoj 
-Saturday   iic    iic   Anil  Kavita  Aditi Sanjay 
+Monday    Anil   Manoj  free   Aditi  Pooja  free  
+Tuesday  Kavita  Anil   Manoj  free   Manoj  free  
+Wednesday Anil  Sanjay  Anil  Sanjay  Anil  Sanjay 
+Thursday  free   free   Aditi  Pooja  Aditi Kavita 
+Friday    Aditi Kavita  Aditi  free  Kavita  free  
+Saturday   iic    iic   Pooja  Pooja Kavita  Manoj 
 
 ========== Class 1 ==========
         P  1   P  2   P  3   P  4   P  5   P  6   
-Monday     f2     f2   Sanjay Sanjay  Anil  Kavita 
-Tuesday   Aditi   f2     f2    Pooja  Pooja Sanjay 
-WednesdaySanjay  Manoj  Anil    f2    Aditi Kavita 
-Thursday  foyer  Anil   Manoj  Anil   Pooja   f2   
-Friday    Aditi  Aditi  Anil   Manoj  Manoj  Pooja 
-Saturday   iic    iic    f2     f2   Kavita  Aditi 
+Monday    Manoj  free   Aditi Sanjay(lab)Sanjay(lab) free  
+Tuesday   Pooja Sanjay(lab)Sanjay(lab) free  Kavita Kavita 
+Wednesday Pooja  free   Manoj  Manoj Kavita Kavita 
+Thursday  free   free   Anil   Anil   Anil   Aditi 
+Friday    Pooja  Manoj Kavita  free   Aditi  Pooja 
+Saturday   iic    iic   Aditi  Aditi  Anil   free  
 
 ========== Class 2 ==========
         P  1   P  2   P  3   P  4   P  5   P  6   
-Monday   Rajesh  Anil  Rajesh Rajesh  Rahul  Rahul 
-Tuesday  Vikram Rajesh   f3    Anil   Priya Kavita 
-WednesdayKavita Vikram Vikram Vikram Vikram Rajesh 
-Thursday  foyer  Rohit  Anil   Priya  Rahul  Priya 
-Friday     f3     f3    Rahul  Anil   Rahul   f3   
-Saturday   iic    iic    f3    Rohit  Priya  Priya 
+Monday    Rahul  Anil  Vikram  Rohit  Anil  Rajesh 
+Tuesday   Priya  Rahul Rajesh  Priya Vikram Vikram 
+Wednesday Rohit  Rohit  free   Anil   Rahul  Priya 
+Thursday  free   free  Vikram  Rohit  Priya  free  
+Friday   Kavita(lab) free   free   Anil   Priya Kavita(lab)
+Saturday   iic    iic   Rahul  Rahul Vikram  Anil  
 
 ========== Class 3 ==========
         P  1   P  2   P  3   P  4   P  5   P  6   
-Monday    Rahul  Rohit   f4    Priya   f4     f4   
-Tuesday   Pooja  Rahul  Rohit  Priya   f4    Priya 
-Wednesday Rahul  Rohit   f4    Rahul  Priya   f4   
-Thursday  foyer  Rahul   f4    Pooja  Anil   Pooja 
-Friday    Ritu   Rohit  Pooja   f4    Ritu   Anil  
-Saturday   iic    iic   Ritu   Priya   f4    Pooja 
+Monday    Rohit  Rohit  free   Rahul  Priya  free  
+Tuesday   Ritu   Ritu   free   Pooja  free   Anil  
+Wednesday Rahul  Pooja  Ritu   Pooja  Ritu   free  
+Thursday  free   Rahul  Priya  Rahul  Rahul  Rohit 
+Friday    Priya  free   Priya  Pooja  Pooja  Priya 
+Saturday   iic    iic   Anil   Ritu   Rohit  Rohit 
 
 ========== Class 4 ==========
         P  1   P  2   P  3   P  4   P  5   P  6   
-Monday    Priya  Rahul  Rahul Kavita  Priya   f5   
-Tuesday    f5   Kavita  Nisha  Nisha  Sneha  Sneha 
-Wednesday Nisha  Rahul  Sneha Sanjay Sanjay Sanjay 
-Thursday  foyer Kavita  Nisha Kavita Sanjay   f5   
-Friday    Priya Kavita  Sneha  Nisha   f5    Sneha 
-Saturday   iic    iic   Priya  Rahul  Rahul   f5   
+Monday    Sneha Kavita  Priya  Nisha  Rahul Kavita 
+Tuesday  Sanjay  free   Priya  Nisha Sanjay  Sneha 
+Wednesday Priya  Nisha Kavita  free  Sanjay  free  
+Thursday  free   Sneha  free  Sanjay Sanjay  free  
+Friday    Rahul  Priya  Rahul  Sneha  Nisha  Rahul 
+Saturday   iic    iic   Sneha  Nisha  free   Priya 
 
 ========== Class 5 ==========
         P  1   P  2   P  3   P  4   P  5   P  6   
-Monday   Sanjay   f6    Ritu   Sneha Sanjay  Sneha 
-Tuesday   Priya  Priya Kavita  Rahul   f6     f6   
-WednesdayRajesh   f6    Priya  Sneha  Manoj  Manoj 
-Thursday  foyer  Ritu  Rajesh   f6   Kavita  Rahul 
-Friday   Rajesh  Manoj  Manoj Kavita  Sneha   f6   
-Saturday   iic    iic   Sneha   f6    Manoj  Manoj 
+Monday    free   free   Sneha  free  Rajesh  Rahul 
+Tuesday   Sneha  Sneha  Ritu  Kavita Rajesh Manoj(lab)
+WednesdayManoj(lab)Kavita  Rahul Kavita  free   Rahul 
+Thursday  free  Sanjay  free   free  Kavita  Priya 
+Friday    Sneha Rajesh Sanjay Kavita Manoj(lab)Manoj(lab)
+Saturday   iic    iic  Manoj(lab)Manoj(lab) Ritu   Sneha 
 
 ========== Class 6 ==========
         P  1   P  2   P  3   P  4   P  5   P  6   
-Monday    Rohit  Priya  Priya Vikram  Sneha  Rohit 
-Tuesday   Sneha  Rohit Vikram Rajesh   f7    Rahul 
-Wednesday Priya  Nisha  Nisha  Nisha Rajesh Vikram 
-Thursday  foyer  Nisha  Sneha   f7    Rohit Vikram 
-Friday    Sneha  Nisha  Rohit  Priya   f7    Rahul 
-Saturday   iic    iic    f7   Rajesh   f7    Rahul 
+Monday    Priya  Nisha  Nisha Vikram  free   free  
+Tuesday   Rohit  Priya  free   Rahul  free   Rohit 
+Wednesday Sneha Vikram  Sneha  Priya  Priya Vikram 
+Thursday  free   Priya  Rohit  free  Vikram  Rahul 
+Friday    Nisha  Nisha Rajesh  Rohit Rajesh  Rohit 
+Saturday   iic    iic   Nisha Rajesh  Rahul Vikram 
 
 ========== Class 7 ==========
         P  1   P  2   P  3   P  4   P  5   P  6   
-Monday    Sneha   f8     f8    Rahul   f8   Rajesh 
-Tuesday  Sameer Vikram Sameer Vikram   f8   Vikram 
-WednesdaySameer Rajesh  Rahul  Rohit  Rohit  Richa 
-Thursday  foyer Vikram  Rahul  Sneha  Sneha   f8   
-Friday    Rohit  Richa Sameer Sameer  Richa Rajesh 
-Saturday   iic    iic   Rohit Vikram  Rohit  Sneha 
-[[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 0, 2, 0, 0, 0, 2, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]]]
+Monday    free   Sneha  Rohit  Richa Sameer  Rohit 
+Tuesday   free  Vikram  Sneha  Richa  Rohit Sameer 
+WednesdayVikram  Rahul  free  Vikram Rajesh  Sneha 
+Thursday  free   Rohit  free   free   Rohit Vikram 
+Friday   Sameer Vikram Sameer  Richa  Rahul Sameer 
+Saturday   iic    iic  Rajesh  Sneha  Sneha  Richa 
+[[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, -2, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 0, -2, 0, 0, 0, 0, 1, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 0, 2, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 0, 0, 0, 0, -6, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]], [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]]]

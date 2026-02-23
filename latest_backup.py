@@ -132,7 +132,7 @@ def assign_lab_periods_randomly():
 
                 if can_assign:
                     for i in range(consecutive_periods):
-                        Timetable[slot + i][class_idx] = teacher_list[teacher_id]["Name"]
+                        Timetable[slot + i][class_idx] = teacher_list[teacher_id]["Name"]+"(lab)"
                         main_teacher_list[slot + i][teacher_id]["available"] = False
 
                     
@@ -140,8 +140,8 @@ def assign_lab_periods_randomly():
                     print(f"Assigned lab session {periods_assigned} for class {class_idx} with teacher {teacher_id} at periods {slot} to {slot + consecutive_periods - 1}")
                 if periods_assigned == total_sessions:
                     break
-                # deduct total lab credits once
-                class_to_teacher[class_idx][teacher_id] -= (total_sessions * consecutive_periods)
+
+                
 total_lab_periods = sum(
     block_info[1] * block_info[2] 
     for class_periods in lab_teacher_periods.values() 
@@ -185,6 +185,16 @@ for class_idx in range(No_of_classes):
     row.append(priority_list)
 
     class_to_teacher.append(row)
+
+# deduct lab credits AFTER class_to_teacher is built
+for class_idx, teacher_periods in lab_teacher_periods.items():
+    for teacher_id, (total_sessions, consecutive_periods, _) in teacher_periods.items():
+        class_to_teacher[class_idx][teacher_id] -= (total_sessions * consecutive_periods)
+# clamp negative credits to zero (IMPORTANT)
+for cls in range(No_of_classes):
+    for t in range(No_of_teachers):
+        if class_to_teacher[cls][t] < 0:
+            class_to_teacher[cls][t] = 0
 # this is class to teacher format 
 #meaninf teacher 2 has 1 periods for that class 
 #[0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]],
@@ -211,6 +221,11 @@ def print_timetable_classwise(Timetable):
 
             for row in range(start, end):
                 teacher = Timetable[row][cls]
+
+                # display cleanup
+                if isinstance(teacher, str) and teacher.startswith("f"):
+                    teacher = "free"
+
                 print(f"{teacher:^7}", end="")
 
             print()
@@ -240,30 +255,33 @@ def find_empty(Timetable, class_to_teacher, Tl):
     best_cell = (-1, -1)
     class_with_min_avl_teachers = float("inf") 
 
-    for x in range(len(Timetable)):      # iterate over periods
+    rows = list(range(len(Timetable)))
+    random.shuffle(rows)
+
+    for x in rows:     # iterate over periods
         for y in range(len(Timetable[0])):  # iterate over classes
 
-                if Timetable[x][y] != 0:
-                    continue
+            if Timetable[x][y] != 0:
+                continue
 
-                teacher_count = 0   #to count how many teachers can teach that class at that period
+            teacher_count = 0   #to count how many teachers can teach that class at that period
 
-                for i in range(No_of_teachers):   #find how many teachers are available to teeach that class at that period
-                    if class_to_teacher[y][i] > 0 and Tl[x][i]["available"]:
-                        #if credits remaining          #if not busy with other class
-                        teacher_count += 1
+            for i in range(No_of_teachers):   #find how many teachers are available to teeach that class at that period
+                if class_to_teacher[y][i] > 0 and Tl[x][i]["available"]:
+                    #if credits remaining          #if not busy with other class
+                    teacher_count += 1
 
 
-                if teacher_count == 0:  # if no teacher is available... wither busy with that class or all credits over
-                    return x, y
+            if teacher_count == 0:  # if no teacher is available... wither busy with that class or all credits over
+                return x, y
 
-                # Select slot with smallest domain
-                if (
-                    teacher_count < class_with_min_avl_teachers or
-                    (teacher_count == class_with_min_avl_teachers and random.random() < 0.5)
-                ):
-                    class_with_min_avl_teachers = teacher_count
-                    best_cell = (x, y)
+            # Select slot with smallest domain
+            if (
+                teacher_count < class_with_min_avl_teachers or
+                (teacher_count == class_with_min_avl_teachers and random.random() < 0.5)
+            ):
+                class_with_min_avl_teachers = teacher_count
+                best_cell = (x, y)
 
     return best_cell
 
@@ -312,33 +330,25 @@ def solve(Timetable, class_to_teacher, Tl):
     # Copy priority list and shuffle for randomness
     priority_list = class_to_teacher[y][-1].copy()
     random.shuffle(priority_list)
-
     for i in priority_list:
-        # Skip lab slots, they are already assigned and reserved
-     if class_to_teacher[y][i] > 0 and Tl[x][i]["available"]:
-
-        # Check if teacher i can be assigned
         if class_to_teacher[y][i] > 0 and Tl[x][i]["available"]:
-            # Assign teacher
             class_to_teacher[y][i] -= 1
             Tl[x][i]["available"] = False
             Timetable[x][y] = Tl[x][i]["Name"]
 
-            # Recursive call
             if solve(Timetable, class_to_teacher, Tl):
                 return True
 
-            # Backtrack (undo assignment)
             Timetable[x][y] = 0
             class_to_teacher[y][i] += 1
             Tl[x][i]["available"] = True
-
     return False
 
 def re_randomize_lab_periods():
     # Randomly re-assign lab periods and try solving again
     for i in range(3):  # Try reshuffling up to 3 times
         print(f"Attempt {i+1} with new lab assignments:")
+        reset_labs()
         assign_lab_periods_randomly()  # Re-randomize lab periods
         if solve(Timetable, class_to_teacher, main_teacher_list):
             print("Solution found!")
@@ -349,6 +359,7 @@ def re_randomize_lab_periods():
 
 reset_labs()
 assign_lab_periods_randomly()
+random.seed()
 if solve(Timetable, class_to_teacher, main_teacher_list):
     print_timetable_classwise(Timetable)
 else:
