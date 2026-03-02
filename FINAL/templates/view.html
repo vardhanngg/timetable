@@ -1,0 +1,28 @@
+<h2>Generated Timetable</h2>
+
+{% for cidx in range(class_names|length) %}
+<h3>{{ class_names[cidx] }}</h3>
+
+<table border="1" cellpadding="6">
+<tr>
+    <th>Day / Period</th>
+    {% for p in periods %}
+        <th>P{{p}}</th>
+    {% endfor %}
+</tr>
+
+{% for d in range(CONFIG.basic_info.working_days) %}
+<tr>
+    <th>{{ days[d] }}</th>
+    {% for p in range(periods|length) %}
+        <td>
+            {{ timetable[d * periods|length + p][cidx] }}
+        </td>
+    {% endfor %}
+</tr>
+{% endfor %}
+</table>
+<br>
+{% endfor %}
+
+<a href="/export">Export CSV</a>

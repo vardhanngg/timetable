@@ -1,0 +1,16 @@
+<h2>Grades & Divisions</h2>
+
+<form method="post">
+    <input name="grade" placeholder="Grade (e.g., I Year)" required>
+    <input name="division" placeholder="Division (A/B/C)" required>
+    <button>Add</button>
+</form>
+
+<h3>Configured</h3>
+<ul>
+{% for g, d in grades.items() %}
+    <li>{{g}} → {{d}}</li>
+{% endfor %}
+</ul>
+
+<a href="/setup/subjects">Continue</a>

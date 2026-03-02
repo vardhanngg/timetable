@@ -1,0 +1,16 @@
+<h2>Faculty</h2>
+
+<form method="post">
+    <input name="name" placeholder="Faculty Name" required>
+    <input type="number" name="max_load" placeholder="Max Weekly Load" required>
+    <button>Add</button>
+</form>
+
+<h3>Configured Faculty</h3>
+<ul>
+{% for f in faculty.values() %}
+    <li>{{f.name}} (Max: {{f.max_load}})</li>
+{% endfor %}
+</ul>
+
+<a href="/setup/grades">Continue</a>

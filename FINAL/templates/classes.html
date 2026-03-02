@@ -1,0 +1,54 @@
+<h2>Class Subject / Lab Configuration</h2>
+
+<form method="post">
+    <input name="class" placeholder="Class name" required><br><br>
+
+    <input name="subject" placeholder="Subject / Lab name" required><br><br>
+
+    <input type="number" name="hours" placeholder="Hours per week" required><br><br>
+
+    <input name="teacher" placeholder="Teacher name" required><br><br>
+
+    <label>Type</label>
+    <select name="type" onchange="toggleLab(this.value)">
+        <option value="theory">Theory</option>
+        <option value="lab">Lab</option>
+    </select><br><br>
+
+    <div id="lab_fields" style="display:none">
+        <input type="number" name="continuous" placeholder="Continuous periods"><br><br>
+
+        <select name="lab_no">
+            {% for no, name in labs.items() %}
+            <option value="{{no}}">Lab {{no}} – {{name}}</option>
+            {% endfor %}
+        </select><br><br>
+    </div>
+
+    <button>Add</button>
+</form>
+
+<script>
+function toggleLab(value){
+    document.getElementById("lab_fields").style.display =
+        value === "lab" ? "block" : "none";
+}
+</script>
+
+<hr>
+
+{% for cls, items in classes.items() %}
+<h3>{{cls}}</h3>
+<ul>
+{% for i in items %}
+    <li>
+        {{i.subject}} – {{i.hours}} hrs – {{i.teacher}}
+        {% if i.type == "lab" %}
+            (Lab {{i.lab_no}}, {{i.continuous}} continuous)
+        {% endif %}
+    </li>
+{% endfor %}
+</ul>
+{% endfor %}
+
+<a href="/generate">Generate Timetable</a>

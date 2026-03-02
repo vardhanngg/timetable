@@ -1,0 +1,22 @@
+<h2>Subjects & Activities</h2>
+
+<form method="post">
+    <input name="name" placeholder="Subject name" required>
+
+    <select name="type">
+        <option value="theory">Theory</option>
+        <option value="lab">Lab</option>
+        <option value="activity">Activity</option>
+    </select>
+
+    <button>Add Subject</button>
+</form>
+
+<h3>Configured Subjects</h3>
+<ul>
+{% for s in subjects.values() %}
+    <li>{{s.name}} ({{s.type}})</li>
+{% endfor %}
+</ul>
+
+<a href="/setup/lessons">Continue</a>

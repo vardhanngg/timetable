@@ -1,0 +1,16 @@
+<h2>Labs Configuration</h2>
+
+<form method="post">
+    <input type="number" name="lab_no" placeholder="Lab Number" required>
+    <input name="lab_name" placeholder="Lab Name" required>
+    <button>Add Lab</button>
+</form>
+
+<h3>Configured Labs</h3>
+<ul>
+{% for no, name in labs.items() %}
+    <li>Lab {{no}} – {{name}}</li>
+{% endfor %}
+</ul>
+
+<a href="/setup/classes">Continue</a>

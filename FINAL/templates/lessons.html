@@ -1,0 +1,50 @@
+<h2>Lessons Configuration</h2>
+
+<form method="post">
+    <label>Grade</label>
+    <select name="grade">
+        {% for g in grades.keys() %}
+        <option value="{{g}}">{{g}}</option>
+        {% endfor %}
+    </select>
+
+    <label>Division</label>
+    <select name="division">
+        {% for divs in grades.values() %}
+        {% for d in divs %}
+        <option value="{{d}}">{{d}}</option>
+        {% endfor %}
+        {% endfor %}
+    </select>
+
+    <label>Subject</label>
+    <select name="subject">
+        {% for s in subjects.values() %}
+        <option value="{{s.name}}">{{s.name}}</option>
+        {% endfor %}
+    </select>
+
+    <label>Faculty</label>
+    <select name="faculty">
+        {% for f in faculty.values() %}
+        <option value="{{f.name}}">{{f.name}}</option>
+        {% endfor %}
+    </select>
+
+    <label>Periods / Week</label>
+    <input type="number" name="periods" min="1" required>
+
+    <label>Consecutive (Labs)</label>
+    <input type="number" name="consecutive" value="1">
+
+    <button>Add Lesson</button>
+</form>
+
+<h3>Configured Lessons</h3>
+<ul>
+{% for l in lessons %}
+    <li>{{l.grade}} {{l.division}} – {{l.subject}} ({{l.periods}})</li>
+{% endfor %}
+</ul>
+
+<a href="/">Back to Dashboard</a>

@@ -1,0 +1,15 @@
+<h2>Setup Progress</h2>
+
+<p>{{completed}} of {{total}} completed</p>
+
+{% if missing %}
+<h4>Still needed:</h4>
+<ul>
+{% for m in missing %}
+    <li>{{m}}</li>
+{% endfor %}
+</ul>
+{% else %}
+<p>All validations passed successfully! 🎉</p>
+<a href="/generate">Generate Timetable</a>
+{% endif %}
