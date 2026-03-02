@@ -1,192 +1,94 @@
-from flask import Flask, render_template, request, redirect
+import os
+from flask import Flask, render_template, request, redirect, url_for
+from werkzeug.utils import secure_filename
+
+# Import your custom modules
 from config import CONFIG
 from utils import setup_progress
-
 from solver import generate_timetable
-from adapter import (build_solver_inputs_from_classes)
+from process_pdf import extract_to_solver_format  # Your Groq logic
 
 app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = '/tmp'
 
 # --------------------------------------------------
-# DASHBOARD
+# PDF UPLOAD & EXTRACTION
 # --------------------------------------------------
-@app.route("/")
-def home():
-    return redirect("/setup/basic")
-
-# --------------------------------------------------
-# BASIC INFORMATION
-# --------------------------------------------------
-@app.route("/setup/classes", methods=["GET", "POST"])
-def setup_classes():
+@app.route("/upload-pdf", methods=["GET", "POST"])
+def upload_pdf():
     if request.method == "POST":
-        class_name = request.form["class"]
-        entry_type = request.form["type"]  # theory / lab
+        if 'file' not in request.files:
+            return "No file part"
+        file = request.files['file']
+        if file.filename == '':
+            return "No selected file"
 
-        entry = {
-            "subject": request.form["subject"],
-            "hours": int(request.form["hours"]),
-            "teacher": request.form["teacher"],
-            "type": entry_type
-        }
+        if file:
+            filename = secure_filename(file.filename)
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(file_path)
 
-        if entry_type == "lab":
-            entry["continuous"] = int(request.form["continuous"])
-            entry["lab_no"] = int(request.form["lab_no"])
+            try:
+                # 1. Use Groq/Llama 3.3 to extract data from PDF
+                # Make sure your TOGETHER_API_KEY or GROQ_API_KEY is set in environment
+                api_key = os.environ.get("GROQ_API_KEY")
+                raw_data = extract_to_solver_format(file_path, api_key)
 
-        CONFIG["classes"].setdefault(class_name, []).append(entry)
+                # 2. Map AI output to your global CONFIG
+                # This bypasses manual entry in /setup/faculty etc.
+                CONFIG["classes"] = raw_data.get("classes", {})
+                CONFIG["faculty"] = raw_data.get("teacher_list", {})
+                CONFIG["basic_info"]["working_days"] = raw_data.get("working_days", 5)
+                CONFIG["bell_schedule"]["periods_per_day"] = raw_data.get("periods_per_day", 8)
+                
+                # Store raw data for adapter use
+                CONFIG["raw_extraction"] = raw_data
 
-    return render_template(
-        "classes.html",
-        classes=CONFIG["classes"],
-        labs=CONFIG["labs"]
-    )
+                return redirect(url_for('generate'))
+            except Exception as e:
+                return f"❌ Extraction failed: {str(e)}"
 
-@app.route("/setup/basic", methods=["GET", "POST"])
-def setup_basic():
-    if request.method == "POST":
-        CONFIG["basic_info"] = {
-            "institute_name": request.form["institute"],
-            "academic_year": request.form["year"],
-            "working_days": int(request.form["days"])
-        }
-        return redirect("/setup/bell")
-    return render_template("basic.html")
-
-# --------------------------------------------------
-# BELL SCHEDULE
-# --------------------------------------------------
-@app.route("/setup/bell", methods=["GET", "POST"])
-def setup_bell():
-    if request.method == "POST":
-        CONFIG["bell_schedule"] = {
-            "periods_per_day": int(request.form["periods"])
-        }
-        return redirect("/setup/faculty")
-    return render_template("bell.html")
+    return render_template("upload.html")
 
 # --------------------------------------------------
-# FACULTY
+# GENERATE TIMETABLE (Updated for AI input)
 # --------------------------------------------------
-@app.route("/setup/faculty", methods=["GET", "POST"])
-def setup_faculty():
-    if request.method == "POST":
-        fid = len(CONFIG["faculty"])
-        CONFIG["faculty"][fid] = {
-            "name": request.form["name"],
-            "max_load": int(request.form["max_load"])
-        }
-    return render_template("faculty.html", faculty=CONFIG["faculty"])
-
-# --------------------------------------------------
-# GRADES & DIVISIONS
-# --------------------------------------------------
-@app.route("/setup/grades", methods=["GET", "POST"])
-def setup_grades():
-    if request.method == "POST":
-        grade = request.form["grade"]
-        division = request.form["division"]
-        CONFIG["grades"].setdefault(grade, []).append(division)
-    return render_template("grades.html", grades=CONFIG["grades"])
-
-# --------------------------------------------------
-# SUBJECTS
-# --------------------------------------------------
-@app.route("/setup/subjects", methods=["GET", "POST"])
-def setup_subjects():
-    if request.method == "POST":
-        sid = len(CONFIG["subjects"])
-        CONFIG["subjects"][sid] = {
-            "name": request.form["name"],
-            "type": request.form["type"]
-        }
-    return render_template("subjects.html", subjects=CONFIG["subjects"])
-
-# --------------------------------------------------
-#labs
-@app.route("/setup/labs", methods=["GET", "POST"])
-def setup_labs():
-    if request.method == "POST":
-        lab_no = int(request.form["lab_no"])
-        lab_name = request.form["lab_name"]
-        CONFIG["labs"][lab_no] = lab_name
-
-    return render_template("labs.html", labs=CONFIG["labs"])
-
-# LESSONS
-# --------------------------------------------------
-@app.route("/setup/lessons", methods=["GET", "POST"])
-def setup_lessons():
-    if request.method == "POST":
-        CONFIG["lessons"].append({
-            "grade": request.form["grade"],
-            "division": request.form["division"],
-            "subject": request.form["subject"],
-            "faculty": request.form["faculty"],
-            "periods": int(request.form["periods"]),
-            "consecutive": int(request.form.get("consecutive", 1))
-        })
-    return render_template(
-        "lessons.html",
-        lessons=CONFIG["lessons"],
-        grades=CONFIG["grades"],
-        subjects=CONFIG["subjects"],
-        faculty=CONFIG["faculty"]
-    )
-
-# --------------------------------------------------
-# GENERATE TIMETABLE
-# --------------------------------------------------
-from adapter import build_solver_inputs_from_classes
 @app.route("/generate")
 def generate():
-    # ---------- basic checks ----------
-    if not CONFIG["basic_info"] or not CONFIG["bell_schedule"]:
-        return "<h3>Please complete basic info and bell schedule</h3>"
+    # If we have AI extraction, use it. Otherwise, use manual adapter logic.
+    if "raw_extraction" in CONFIG:
+        data = CONFIG["raw_extraction"]
+        
+        # Format the subject_map keys from "0,1" string to (0, 1) tuple
+        formatted_subject_map = {
+            tuple(map(int, k.split(','))): v 
+            for k, v in data['subject_map'].items()
+        }
 
-    if not CONFIG["classes"]:
-        return "<h3>Please add at least one class</h3>"
-
-    # ---------- BASIC VALIDATION (PASTE HERE) ----------
-    total_slots = (
-        CONFIG["basic_info"]["working_days"]
-        * CONFIG["bell_schedule"]["periods_per_day"]
-    )
-
-    for cls, items in CONFIG["classes"].items():
-        total_hours = sum(i["hours"] for i in items)
-        if total_hours > total_slots:
-            return f"<h3>{cls} exceeds available periods</h3>"
-
-    # ---------- build solver inputs ----------
-    (
-        No_of_classes,
-        teacher_list,
-        class_teacher_periods,
-        lab_teacher_periods,
-        subject_map
-    ) = build_solver_inputs_from_classes(CONFIG)
-
-    No_of_days_in_week = CONFIG["basic_info"]["working_days"]
-    No_of_periods = CONFIG["bell_schedule"]["periods_per_day"]
-
-    # ---------- call solver ----------
-    timetable = generate_timetable(
-        No_of_classes,
-        No_of_days_in_week,
-        No_of_periods,
-        teacher_list,
-        class_teacher_periods,
-        lab_teacher_periods,
-        subject_map,
-        fixed_periods=None
-    )
+        timetable = generate_timetable(
+            No_of_classes=data['No_of_classes'],
+            No_of_days_in_week=CONFIG["basic_info"]["working_days"],
+            No_of_periods=CONFIG["bell_schedule"]["periods_per_day"],
+            teacher_list={int(k): v for k, v in data['teacher_list'].items()},
+            class_teacher_periods={int(k): {int(tk): tv for tk, tv in v.items()} for k, v in data['class_teacher_periods'].items()},
+            lab_teacher_periods={int(k): {int(tk): tv for tk, tv in v.items()} for k, v in data['lab_teacher_periods'].items()},
+            subject_map=formatted_subject_map
+        )
+    else:
+        # Fallback to manual entry adapter
+        from adapter import build_solver_inputs_from_classes
+        # ... (your existing build_solver_inputs_from_classes logic) ...
 
     if not timetable:
         return "<h3>No solution found ❌</h3>"
 
     CONFIG["timetable"] = timetable
     return redirect("/view")
+
+# ... (rest of your /view and /export routes) ...
+
+if __name__ == "__main__":
+    app.run(debug=True)
 # --------------------------------------------------
 #view
 @app.route("/view")
