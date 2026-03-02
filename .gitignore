@@ -1,6 +1,6 @@
-.env
-.env
-FINAL/.env
 .venv/
-FINAL/.venv/
+venv/
 __pycache__/
+*.pyc
+.vscode/FINAL/.env
+FINAL/.env
