@@ -65,43 +65,54 @@ def build_solver_inputs_from_classes(CONFIG, days, periods):
         lab_teacher_periods,
         subject_map
     )
-
-def build_final_inputs(CONFIG, days, periods, fixed_slots):
-    # 1. Get base inputs
+def build_final_inputs(CONFIG, days, periods, fixed_slots_data):
+    # 1. Get base inputs (Theory/Lab requirements)
     No_of_classes, teacher_list, class_teacher_periods, lab_teacher_periods, subject_map = build_solver_inputs_from_classes(CONFIG, days, periods)
 
-    # 2. Process Fixed Slots
-    # fixed_slots looks like: {"0-1": {"label": "Lunch", "teacher_id": "None"}}
+    # fixed_slots_data is likely: {"0": {"0-1": {"label": "Lunch", "teacher_id": "None"}}, "1": {...}}
     
-    # We need to track how many fixed periods are assigned per class
-    # Since they apply to the whole school usually, it's a global count
-    total_fixed_per_week = len(fixed_slots)
-
-    for slot_id, info in fixed_slots.items():
-        t_id_str = info.get('teacher_id')
+    # 2. Process Fixed Slots Class-by-Class
+    for cls_idx_str, slots in fixed_slots_data.items():
+        cls_idx = int(cls_idx_str)
         
-        if t_id_str != "None":
-            t_id = int(t_id_str)
-            # If this is a teacher's fixed period, remove 1 credit 
-            # from their theory load so they don't get over-assigned
-            for c_idx in range(No_of_classes):
-                if t_id in class_teacher_periods[c_idx]:
-                    if class_teacher_periods[c_idx][t_id] > 0:
-                        class_teacher_periods[c_idx][t_id] -= 1
-
-    # 3. Recalculate 'f' Fillers
-    # The filler 'f' teacher for each class must now account for these fixed slots
-    # New filler = Total Slots - Theory - Labs - Total Fixed
-    for cidx in range(No_of_classes):
-        total_assigned = sum(class_teacher_periods[cidx].values()) + \
-                         sum(val[0] for val in lab_teacher_periods.get(cidx, {}).values())
+        fixed_count_for_this_class = 0
         
-        # This is the teacher ID of the filler 'f' teacher (added at the end of the list)
-        # In your adapter, it's the last ID added for that class.
-        # We need to find the ID where Name starts with 'f'
+        for slot_id, info in slots.items():
+            label = info.get('label', '').strip()
+            if not label:
+                continue
+                
+            fixed_count_for_this_class += 1
+            t_id_raw = info.get('teacher_id')
+
+            # If a specific teacher is assigned to this fixed slot
+            if t_id_raw is not None and str(t_id_raw).isdigit():
+                t_id = int(t_id_raw)
+                
+                # Subtract 1 from their theory load requirements for this class
+                # so the solver doesn't assign them again
+                if t_id in class_teacher_periods[cls_idx]:
+                    if class_teacher_periods[cls_idx][t_id] > 0:
+                        class_teacher_periods[cls_idx][t_id] -= 1
+
+        # 3. Recalculate 'f' Fillers (Free Periods) for THIS class
+        # We need to find the specific filler teacher ID for this class (e.g., "f1")
+        filler_tid = None
         for t_id, t_info in teacher_list.items():
-            if t_info['Name'] == f"f{cidx + 1}":
-                new_free = (days * periods) - total_assigned - total_fixed_per_week
-                class_teacher_periods[cidx][t_id] = max(0, new_free)
+            if t_info['Name'] == f"f{cls_idx + 1}":
+                filler_tid = t_id
+                break
+        
+        if filler_tid is not None:
+            # Total Capacity (e.g. 36)
+            total_slots = days * periods
+            
+            # Sum of remaining Theory + Labs
+            theory_sum = sum(val for tid, val in class_teacher_periods[cls_idx].items() if tid != filler_tid)
+            lab_sum = sum(val[0] for val in lab_teacher_periods.get(cls_idx, {}).values())
+            
+            # Filler = Total - (Remaining Theory) - (Labs) - (Fixed Slots like Lunch)
+            new_free_credits = total_slots - theory_sum - lab_sum - fixed_count_for_this_class
+            class_teacher_periods[cls_idx][filler_tid] = max(0, new_free_credits)
 
     return No_of_classes, teacher_list, class_teacher_periods, lab_teacher_periods, subject_map

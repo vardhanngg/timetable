@@ -89,71 +89,6 @@ def generate():
         print(traceback.format_exc())
         return f"<h3>Data Processing Error: {str(e)}</h3>"
 
-@app.route("/update-data", methods=["POST"])
-def update_data():
-    try:
-        incoming_payload = request.get_json()
-        if not incoming_payload:
-            return jsonify({"status": "error", "message": "No data received"}), 400
-
-        web_data = incoming_payload.get('table_data', [])
-        config = incoming_payload.get('config', {})
-        
-        # Pulling dynamic days/periods from the Setup UI
-        days = int(config.get('days', 6))
-        periods = int(config.get('periods', 6))
-
-        organized_classes = {}
-
-        for row in web_data:
-            c_name = row['class'].replace("Class ", "").strip()
-            if c_name not in organized_classes:
-                organized_classes[c_name] = []
-
-            organized_classes[c_name].append({
-                "teacher": row.get('teacher', 'Unknown'),
-                "subject": row.get('subject', 'General'),
-                "hours": int(row.get('periods', 0)),
-                "type": row.get('type', 'theory').lower(),
-                "continuous": int(row.get('continuous', 1)),
-                "lab_no": int(row.get('lab_no', 0))
-            })
-
-        # 3. Use the updated adapter
-        (No_of_classes, teacher_list, class_teacher_periods, 
-         lab_teacher_periods, subject_map) = build_solver_inputs_from_classes(
-             {"classes": organized_classes}, days, periods
-         )
-
-        # 4. Trigger Solver
-        final_timetable = generate_timetable(
-            No_of_classes, days, periods, teacher_list, 
-            class_teacher_periods, lab_teacher_periods, subject_map
-        )
-
-        if final_timetable:
-            # VITAL: Store the dimensions used so the Success UI knows how to render
-            session_meta = {"days": days, "periods": periods, "num_classes": No_of_classes}
-            with open("generated_metadata.json", "w") as f:
-                json.dump(session_meta, f)
-                
-            with open("generated_timetable.json", "w") as f:
-                json.dump(final_timetable, f)
-            
-            with open("final_schedule.json", "w") as f:
-                json.dump(web_data, f)
-                
-            return jsonify({"status": "success", "redirect": url_for('success_summary')})
-        
-        return jsonify({
-            "status": "error", 
-            "message": "The solver could not find a valid schedule. Check for teacher overloads."
-        }), 400
-
-    except Exception as e:
-        import traceback
-        print(traceback.format_exc())
-        return jsonify({"status": "error", "message": f"Server Error: {str(e)}"}), 500
 
 # CLEANED: Only one version of success_summary using dynamic metadata
 @app.route("/success-summary")
@@ -181,43 +116,28 @@ def success_summary():
 
 
 
-# --- ADD THIS NEW ROUTE ---
-@app.route("/setup-fixed")
-def setup_fixed():
-    # Load the data the user just verified in allot.html
-    if not os.path.exists("temp_web_data.json"):
-        return redirect(url_for('home'))
-        
-    with open("temp_web_data.json", "r") as f:
-        stored = json.load(f)
-    
-    # We need the teacher list to show in the dropdowns on the fixed grid
-    (no_classes, t_list, c_theory, l_periods, subj_map) = build_solver_inputs_from_classes(
-        {"classes": stored['organized']}, stored['days'], stored['periods']
-    )
-    
-    return render_template("fixed_setup.html", 
-                           days=stored['days'], 
-                           periods=stored['periods'], 
-                           teachers=t_list)
 
-# --- MODIFY YOUR EXISTING update_data ROUTE ---
+# --- KEEP THIS VERSION (REPLACES THE TWO OLD ONES) ---
 @app.route("/update-data", methods=["POST"])
 def update_data():
     try:
         incoming_payload = request.get_json()
         web_data = incoming_payload.get('table_data', [])
         config = incoming_payload.get('config', {})
-        days = int(config.get('days', 6))
-        periods = int(config.get('periods', 6))
+        
+        # Create a mapping of teacher names to unique IDs
+        all_teachers = sorted(list(set(row['teacher'] for row in web_data)))
+        t_name_to_id = {name: i for i, name in enumerate(all_teachers)}
 
-        # Organize data exactly like before
         organized_classes = {}
         for row in web_data:
             c_name = row['class'].replace("Class ", "").strip()
-            if c_name not in organized_classes: organized_classes[c_name] = []
+            if c_name not in organized_classes: 
+                organized_classes[c_name] = []
+            
             organized_classes[c_name].append({
                 "teacher": row.get('teacher', 'Unknown'),
+                "teacher_id": t_name_to_id.get(row.get('teacher'), 99), # Numeric ID!
                 "subject": row.get('subject', 'General'),
                 "hours": int(row.get('periods', 0)),
                 "type": row.get('type', 'theory').lower(),
@@ -225,51 +145,92 @@ def update_data():
                 "lab_no": int(row.get('lab_no', 0))
             })
 
-        # INSTEAD OF SOLVING: Save to a temp file and redirect to Fixed Setup
         session_data = {
             "organized": organized_classes,
-            "raw_table": web_data,
-            "days": days,
-            "periods": periods
+            "days": int(config.get('days', 6)),
+            "periods": int(config.get('periods', 6))
         }
         with open("temp_web_data.json", "w") as f:
             json.dump(session_data, f)
 
-        # Tell the JS to go to the Fixed Setup page
         return jsonify({"status": "success", "redirect": url_for('setup_fixed')})
-
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route("/run-final-solver", methods=["POST"])
-def run_final_solver():
-    fixed_data = request.get_json().get('fixed_slots', {})
-    
+
+# .................
+@app.route("/setup-fixed")
+def setup_fixed():
+    if not os.path.exists("temp_web_data.json"):
+        return redirect(url_for('home'))
+        
     with open("temp_web_data.json", "r") as f:
         stored = json.load(f)
-
-    # Use the new subtraction logic
-    (No_of_classes, t_list, c_theory, l_periods, subj_map) = build_final_inputs(
-        stored['organized'], stored['days'], stored['periods'], fixed_data
-    )
-
-    # Run Solver
-    final_timetable = generate_timetable(
-        No_of_classes, stored['days'], stored['periods'], t_list, 
-        c_theory, l_periods, subj_map, fixed_slots=fixed_data
-    )
-
-    if final_timetable:
-        # Save results (same as your current success logic)
-        with open("generated_metadata.json", "w") as f:
-            json.dump({"days": stored['days'], "periods": stored['periods'], "num_classes": No_of_classes}, f)
-        with open("generated_timetable.json", "w") as f:
-            json.dump(final_timetable, f)
-        return jsonify({"status": "success", "redirect": url_for('success_summary')})
     
-    return jsonify({"status": "error", "message": "Constraint Conflict!"})
+    return render_template("fixed_setup.html", 
+                           days=stored['days'], 
+                           periods=stored['periods'], 
+                           class_data=stored['organized'])
+
+@app.route("/run-final-solver", methods=["POST"])
+def run_final_solver():
+    try:
+        fixed_data = request.get_json().get('fixed_slots', {})
+        
+        if not os.path.exists("temp_web_data.json"):
+            return jsonify({"status": "error", "message": "Session expired. Please restart."}), 400
+
+        with open("temp_web_data.json", "r") as f:
+            stored = json.load(f)
+
+        from adapter import build_final_inputs 
+        
+        (No_of_classes, t_list, c_theory, l_periods, subj_map) = build_final_inputs(
+            {"classes": stored['organized']}, 
+            stored['days'], 
+            stored['periods'], 
+            fixed_data
+        )
+
+        final_timetable = generate_timetable(
+            No_of_classes, stored['days'], stored['periods'], t_list, 
+            c_theory, l_periods, subj_map, 
+            fixed_periods=fixed_data
+        )
+
+        if final_timetable:
+            # 1. Save metadata for the success page
+            with open("generated_metadata.json", "w") as f:
+                json.dump({
+                    "days": stored['days'], 
+                    "periods": stored['periods'], 
+                    "num_classes": No_of_classes
+                }, f)
+            
+            # 2. Save the actual timetable
+            with open("generated_timetable.json", "w") as f:
+                json.dump(final_timetable, f)
+
+            # 3. Create the 'final_schedule.json' that success_summary expects
+            # We reconstruct it from the 'organized' data
+            flat_rows = []
+            for c_name, teachers in stored['organized'].items():
+                for t in teachers:
+                    flat_rows.append({"class": f"Class {c_name}", "teacher": t['teacher']})
+            
+            with open("final_schedule.json", "w") as f:
+                json.dump(flat_rows, f)
+
+            return jsonify({"status": "success", "redirect": url_for('success_summary')})
+        
+        return jsonify({"status": "error", "message": "Solver failed. Likely a teacher collision."})
+    except Exception as e:
+        import traceback
+        print(traceback.format_exc()) # Check your terminal to see the real error!
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
-    
+
+        
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000, debug=True)
