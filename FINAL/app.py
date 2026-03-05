@@ -53,31 +53,35 @@ def generate():
         display_data = []
         teacher_map = data.get('teacher_list', {})
 
-        # Process Theory
-        for class_id, teachers in data.get('class_teacher_periods', {}).items():
-            for t_id, info in teachers.items():
-                subj = info.get('subject', 'Theory') if isinstance(info, dict) else "Theory"
-                p_val = info.get('periods', 0) if isinstance(info, dict) else info
+        # 1. Process Theory (Now a LIST, not a DICT)
+        for class_id, teachers_list in data.get('class_teacher_periods', {}).items():
+            # FIX: Loop through the list directly instead of using .items()
+            for item in teachers_list:
+                t_id = str(item.get('teacher_id'))
+                subj = item.get('subject', 'Theory')
+                p_val = item.get('periods', 0)
 
                 display_data.append({
                     "class": f"Class {class_id}",
                     "subject": subj,
-                    "teacher": teacher_map.get(str(t_id), {}).get('Name', f"S{t_id}"),
+                    "teacher": teacher_map.get(t_id, {}).get('Name', f"S{t_id}"),
                     "type": "Theory",
                     "periods": p_val
                 })
 
-        # Process Labs
-        for class_id, labs in data.get('lab_teacher_periods', {}).items():
-            for t_id, info in labs.items():
-                subj = info.get('subject', 'Lab') if isinstance(info, dict) else "Lab"
-                p_raw = info.get('periods', [0]) if isinstance(info, dict) else [info]
-                p_count = p_raw[0] if (isinstance(p_raw, list) and len(p_raw) > 0) else 0
+        # 2. Process Labs (Now a LIST, not a DICT)
+        for class_id, labs_list in data.get('lab_teacher_periods', {}).items():
+            # FIX: Loop through the list directly instead of using .items()
+            for item in labs_list:
+                t_id = str(item.get('teacher_id'))
+                subj = item.get('subject', 'Lab')
+                p_raw = item.get('periods', [0])
+                p_count = p_raw[0] if isinstance(p_raw, list) else p_raw
 
                 display_data.append({
                     "class": f"Class {class_id}",
                     "subject": subj,
-                    "teacher": teacher_map.get(str(t_id), {}).get('Name', f"S{t_id}"),
+                    "teacher": teacher_map.get(t_id, {}).get('Name', f"S{t_id}"),
                     "type": "Lab",
                     "periods": p_count
                 })
@@ -88,7 +92,6 @@ def generate():
         import traceback
         print(traceback.format_exc())
         return f"<h3>Data Processing Error: {str(e)}</h3>"
-
 
 # CLEANED: Only one version of success_summary using dynamic metadata
 @app.route("/success-summary")
@@ -130,17 +133,19 @@ def update_data():
         t_name_to_id = {name: i for i, name in enumerate(all_teachers)}
 
         organized_classes = {}
+        # Inside @app.route("/update-data", methods=["POST"])
         for row in web_data:
             c_name = row['class'].replace("Class ", "").strip()
             if c_name not in organized_classes: 
                 organized_classes[c_name] = []
             
+            # ENSURE THESE TYPES ARE EXPLICIT
             organized_classes[c_name].append({
                 "teacher": row.get('teacher', 'Unknown'),
-                "teacher_id": t_name_to_id.get(row.get('teacher'), 99), # Numeric ID!
+                "teacher_id": t_name_to_id.get(row.get('teacher'), 99), 
                 "subject": row.get('subject', 'General'),
                 "hours": int(row.get('periods', 0)),
-                "type": row.get('type', 'theory').lower(),
+                "type": str(row.get('type', 'theory')).lower().strip(), # Clean string
                 "continuous": int(row.get('continuous', 1)),
                 "lab_no": int(row.get('lab_no', 0))
             })
@@ -192,6 +197,21 @@ def run_final_solver():
             fixed_data
         )
 
+        # --- DEBUG LOGGING: Save the exact data going into the solver ---
+        debug_payload = {
+            "No_of_classes": No_of_classes,
+            "days": stored['days'],
+            "periods": stored['periods'],
+            "teacher_list": t_list,
+            "class_theory_workload": c_theory,
+            "lab_periods": l_periods,
+            "subject_map": {str(k): v for k, v in subj_map.items()},  # Convert tuple keys to strings for JSON
+            "fixed_periods": fixed_data
+        }
+        with open("solver_input_debug.json", "w") as f:
+            json.dump(debug_payload, f, indent=4)
+        # --------------------------------------------------------------
+
         final_timetable = generate_timetable(
             No_of_classes, stored['days'], stored['periods'], t_list, 
             c_theory, l_periods, subj_map, 
@@ -212,7 +232,6 @@ def run_final_solver():
                 json.dump(final_timetable, f)
 
             # 3. Create the 'final_schedule.json' that success_summary expects
-            # We reconstruct it from the 'organized' data
             flat_rows = []
             for c_name, teachers in stored['organized'].items():
                 for t in teachers:
@@ -226,10 +245,8 @@ def run_final_solver():
         return jsonify({"status": "error", "message": "Solver failed. Likely a teacher collision."})
     except Exception as e:
         import traceback
-        print(traceback.format_exc()) # Check your terminal to see the real error!
+        print(traceback.format_exc()) 
         return jsonify({"status": "error", "message": str(e)}), 500
-
-
 
         
 if __name__ == "__main__":

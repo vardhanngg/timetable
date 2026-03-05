@@ -1,0 +1,40 @@
+
+--- CLASS 0 ---
+Day 1: S3 | f1 | f1 | S8 | S2 (Lab 1) | S2 (Lab 1)
+Day 2: S2 (Lab 1) | S2 (Lab 1) | S5 | S9 | S9 | S7
+Day 3: S7 | f1 | S6 | S2 (Lab 1) | S2 (Lab 1) | S7
+Day 4: S2 (Lab 1) | S2 (Lab 1) | S3 | f1 | S5 | S6
+Day 5: S3 | S6 | S9 | S5 | S2 (Lab 1) | S2 (Lab 1)
+Day 6: S8 | S2 (Lab 1) | S2 (Lab 1) | f1 | f1 | S5
+
+--- CLASS 1 ---
+Day 1: S9 | S5 | S6 | S5 | S9 | S9
+Day 2: S5 | f2 | f2 | S4 | S10 (Lab 1) | S10 (Lab 1)
+Day 3: S5 | S10 (Lab 1) | S10 (Lab 1) | S6 | f2 | S6
+Day 4: S9 | f2 | S9 | S10 (Lab 1) | S10 (Lab 1) | S7
+Day 5: f2 | S10 (Lab 1) | S10 (Lab 1) | f2 | S9 | S4
+Day 6: f2 | S4 | S4 | S7 | f2 | f2
+
+--- CLASS 2 ---
+Day 1: S11 (Lab 2) | S11 (Lab 2) | S5 | f3 | S5 | f3
+Day 2: S11 (Lab 2) | S11 (Lab 2) | S3 | S5 | S5 | S4
+Day 3: S11 (Lab 2) | S11 (Lab 2) | f3 | S4 | S10 | f3
+Day 4: f3 | f3 | S11 (Lab 2) | S11 (Lab 2) | S3 | S4
+Day 5: S11 (Lab 2) | S11 (Lab 2) | S7 | S3 | S3 | f3
+Day 6: S7 | S10 | S10 | S4 | S11 (Lab 2) | S11 (Lab 2)
+
+--- CLASS 3 ---
+Day 1: S4 | S8 | f4 | f4 | S11 | f4
+Day 2: S10 | f4 | S4 | S10 | f4 | f4
+Day 3: S1 | S1 | f4 | f4 | f4 | S11
+Day 4: f4 | f4 | S12 | S12 | f4 | S1
+Day 5: S4 | S12 | S11 | S11 | f4 | S8
+Day 6: S12 | f4 | f4 | S1 | S4 | f4
+
+--- CLASS 4 ---
+Day 1: f5 | f5 | S3 | f5 | S1 | S8
+Day 2: S8 | f5 | f5 | S3 | S3 | S3
+Day 3: S2 | S2 | f5 | f5 | S1 | S2
+Day 4: S5 | S1 | f5 | f5 | S1 | S5
+Day 5: S2 | f5 | f5 | S1 | S5 | S3
+Day 6: S2 | f5 | S5 | S5 | f5 | f5

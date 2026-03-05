@@ -53,7 +53,7 @@
                     <td>
                         <div class="slot-card">
                             <input type="text" class="form-control form-control-sm mb-1 label-input" 
-                                   placeholder="Label (e.g. Lunch)" data-slot="{{d}}-{{p}}">
+                                   placeholder="Label (e.g. games)" data-slot="{{d}}-{{p}}">
                             <select class="form-select form-select-sm teacher-select" data-slot="{{d}}-{{p}}">
                                 <option value="None">No Teacher</option>
                             </select>
@@ -119,26 +119,38 @@ function runSolver() {
     btn.disabled = true;
     loader.style.display = 'flex';
 
+    console.log("Sending fixed slots to solver:", storage);
+
     fetch('/run-final-solver', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fixed_slots: storage })
     })
     .then(async response => {
-        const data = await response.json();
-        if (response.ok && data.status === 'success') {
-            window.location.href = data.redirect;
-        } else {
-            throw new Error(data.message || "Unknown error occurred");
+        const text = await response.text(); // Get raw text first to avoid JSON parse errors
+        try {
+            const data = JSON.parse(text);
+            if (response.ok && data.status === 'success') {
+                window.location.href = data.redirect;
+            } else {
+                alert("Solver Error: " + (data.message || "The solver could not find a valid schedule."));
+                btn.disabled = false;
+                loader.style.display = 'none';
+            }
+        } catch (e) {
+            console.error("Server crashed or sent invalid JSON:", text);
+            alert("Critical Server Error. Check your Python terminal for the traceback.");
+            btn.disabled = false;
+            loader.style.display = 'none';
         }
     })
     .catch(err => {
-        alert("Error: " + err.message);
+        console.error("Fetch error:", err);
+        alert("Network Error: " + err.message);
         btn.disabled = false;
         loader.style.display = 'none';
     });
 }
-
 window.onload = switchClass;
 </script>
 </body>

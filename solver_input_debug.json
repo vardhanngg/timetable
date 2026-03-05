@@ -1,0 +1,188 @@
+{
+    "No_of_classes": 5,
+    "days": 6,
+    "periods": 6,
+    "teacher_list": {
+        "8": {
+            "Name": "S6",
+            "available": true
+        },
+        "9": {
+            "Name": "S7",
+            "available": true
+        },
+        "4": {
+            "Name": "S2",
+            "available": true
+        },
+        "7": {
+            "Name": "S5",
+            "available": true
+        },
+        "10": {
+            "Name": "S8",
+            "available": true
+        },
+        "11": {
+            "Name": "S9",
+            "available": true
+        },
+        "5": {
+            "Name": "S3",
+            "available": true
+        },
+        "1000": {
+            "Name": "f1",
+            "available": true
+        },
+        "6": {
+            "Name": "S4",
+            "available": true
+        },
+        "1": {
+            "Name": "S10",
+            "available": true
+        },
+        "1001": {
+            "Name": "f2",
+            "available": true
+        },
+        "2": {
+            "Name": "S11",
+            "available": true
+        },
+        "1002": {
+            "Name": "f3",
+            "available": true
+        },
+        "3": {
+            "Name": "S12",
+            "available": true
+        },
+        "0": {
+            "Name": "S1",
+            "available": true
+        },
+        "1003": {
+            "Name": "f4",
+            "available": true
+        },
+        "1004": {
+            "Name": "f5",
+            "available": true
+        }
+    },
+    "class_theory_workload": {
+        "0": {
+            "8": 3,
+            "9": 3,
+            "4": 4,
+            "7": 4,
+            "10": 2,
+            "11": 3,
+            "5": 0,
+            "1000": 9
+        },
+        "1": {
+            "8": 3,
+            "11": 6,
+            "6": 4,
+            "7": 4,
+            "9": 2,
+            "1": 0,
+            "1001": 13
+        },
+        "2": {
+            "6": 4,
+            "1": 7,
+            "7": 5,
+            "5": 5,
+            "9": 2,
+            "2": 0,
+            "1002": 7
+        },
+        "3": {
+            "3": 4,
+            "6": 4,
+            "2": 4,
+            "1": 2,
+            "0": 4,
+            "10": 2,
+            "1003": 16
+        },
+        "4": {
+            "7": 5,
+            "5": 5,
+            "4": 5,
+            "0": 5,
+            "1004": 16
+        }
+    },
+    "lab_periods": {
+        "0": {
+            "4": [
+                6,
+                2,
+                1
+            ],
+            "5": [
+                2,
+                2,
+                1
+            ]
+        },
+        "1": {
+            "1": [
+                4,
+                2,
+                2
+            ]
+        },
+        "2": {
+            "2": [
+                6,
+                2,
+                2
+            ]
+        }
+    },
+    "subject_map": {
+        "(0, 8)": "General English",
+        "(0, 9)": "II Language",
+        "(0, 4)": "Software Lab in C \u2013 Part I",
+        "(0, 7)": "Calculus",
+        "(0, 10)": "Awareness",
+        "(0, 11)": "Multidisciplinary Course",
+        "(0, 5)": "Software Lab in Python \u2013 I",
+        "(0, 1000)": "Free",
+        "(1, 8)": "General English",
+        "(1, 11)": "Multidisciplinary Course",
+        "(1, 6)": "Discrete Mathematics for Computer Science",
+        "(1, 7)": "Statistics for Data Science",
+        "(1, 9)": "Awareness",
+        "(1, 1)": "Software Lab in Data Visulaization",
+        "(1, 1001)": "Free",
+        "(2, 6)": "Operating Systems",
+        "(2, 1)": "Skill Enhancement Course",
+        "(2, 7)": "Optimization for Machine Learning",
+        "(2, 5)": "Datamining and Machine Learning",
+        "(2, 9)": "Awareness",
+        "(2, 2)": "Software Lab in Java",
+        "(2, 1002)": "Free",
+        "(3, 3)": "Linux System Programming",
+        "(3, 6)": "Elective \u2013 II",
+        "(3, 2)": "Elective \u2013 III",
+        "(3, 1)": "Research Methodology",
+        "(3, 0)": "Cloud Computing",
+        "(3, 10)": "Awareness",
+        "(3, 1003)": "Free",
+        "(4, 7)": "Stochastic Processes",
+        "(4, 5)": "Deep Learning",
+        "(4, 4)": "Natural Language Processing",
+        "(4, 0)": "Cloud Computing",
+        "(4, 1004)": "Free"
+    },
+    "fixed_periods": {
+        "0": {}
+    }
+}

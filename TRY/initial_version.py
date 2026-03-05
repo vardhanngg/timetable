@@ -2,7 +2,7 @@ import random
 import copy 
 import sys 
 
-random.seed(10) 
+random.seed() 
 #for puttong result in a file  
 log_file = open("output.log", "w", encoding="utf-8") 
 sys.stdout = log_file   
@@ -26,14 +26,15 @@ for i in range(No_of_classes):
 #Creating 36 rows (one for each period in week) 
 for j in range(total_periods):     
     Timetable.append(arr.copy())  
-
+'''
 #fixed periods 
 for i in range(len(Timetable[0])):     
     Timetable[18][i] = "foyer"        
     Timetable[30][i] = "iic"         
     Timetable[31][i] = "iic"     
 fixed_periods_count=3  
-
+'''
+fixed_periods_count=0
 #----------------------------------------------------  
 teacher_list = {     
     0: {"Name": "S1", "available": True},     
