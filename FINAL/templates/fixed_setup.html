@@ -271,6 +271,26 @@ document.addEventListener('change', function(e) {
     const subject    = selectedOption.dataset.subject;
     const continuous = parseInt(selectedOption.dataset.continuous) || 1;
 
+    // Guard: block if this subject already fully fixed
+    const currentClassName = classKeys[clsIdx];
+    const teachersForClass = classInfo[currentClassName] || [];
+    const teacherEntry = teachersForClass.find(t => String(t.teacher_id) === String(selectedVal));
+    const maxHours = teacherEntry ? teacherEntry.hours : 999;
+
+    let alreadyFixed = 0;
+    for (let s in storage[clsIdx]) {
+        if (s !== slot && storage[clsIdx][s] && String(storage[clsIdx][s].teacher_id) === String(selectedVal)) {
+            alreadyFixed++;
+        }
+    }
+
+    if (alreadyFixed >= maxHours) {
+        alert('⚠️ "' + subject + '" only has ' + maxHours + ' period(s).\nAll are already fixed in other slots!');
+        target.value = '__none__';
+        styleCard(card, 'default');
+        return;
+    }
+
     storage[clsIdx][slot] = { label: subject, teacher_id: selectedVal, is_free: false, is_event: false };
     styleCard(card, 'subject');
 

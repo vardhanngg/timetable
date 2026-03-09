@@ -74,14 +74,14 @@
     },
     "class_theory_workload": {
         "0": {
-            "8": 3,
+            "8": 0,
             "9": 3,
             "4": 4,
             "7": 4,
             "10": 2,
             "11": 3,
             "5": 0,
-            "1000": 7
+            "1000": 8
         },
         "1": {
             "8": 3,
@@ -90,7 +90,7 @@
             "7": 4,
             "9": 2,
             "1": 0,
-            "1001": 12
+            "1001": 13
         },
         "2": {
             "6": 4,
@@ -99,7 +99,7 @@
             "5": 5,
             "9": 2,
             "2": 0,
-            "1002": 6
+            "1002": 7
         },
         "3": {
             "3": 4,
@@ -108,14 +108,14 @@
             "1": 2,
             "0": 4,
             "10": 2,
-            "1003": 15
+            "1003": 16
         },
         "4": {
             "7": 5,
-            "5": 4,
+            "5": 5,
             "4": 5,
             "0": 5,
-            "1004": 15
+            "1004": 16
         }
     },
     "lab_periods": {
@@ -135,14 +135,14 @@
             "1": [
                 4,
                 2,
-                2
+                1
             ]
         },
         "2": {
             "2": [
                 6,
                 2,
-                2
+                1
             ]
         }
     },
@@ -151,7 +151,7 @@
             "8": [
                 {
                     "name": "General English",
-                    "hours": 3,
+                    "hours": 0,
                     "type": "theory"
                 }
             ],
@@ -205,7 +205,7 @@
             "1000": [
                 {
                     "name": "Free",
-                    "hours": 7,
+                    "hours": 8,
                     "type": "theory"
                 }
             ]
@@ -261,7 +261,7 @@
             "1001": [
                 {
                     "name": "Free",
-                    "hours": 12,
+                    "hours": 13,
                     "type": "theory"
                 }
             ]
@@ -317,7 +317,7 @@
             "1002": [
                 {
                     "name": "Free",
-                    "hours": 6,
+                    "hours": 7,
                     "type": "theory"
                 }
             ]
@@ -368,7 +368,7 @@
             "1003": [
                 {
                     "name": "Free",
-                    "hours": 15,
+                    "hours": 16,
                     "type": "theory"
                 }
             ]
@@ -384,7 +384,7 @@
             "5": [
                 {
                     "name": "Deep Learning",
-                    "hours": 4,
+                    "hours": 5,
                     "type": "theory"
                 }
             ],
@@ -405,7 +405,7 @@
             "1004": [
                 {
                     "name": "Free",
-                    "hours": 15,
+                    "hours": 16,
                     "type": "theory"
                 }
             ]
@@ -414,53 +414,27 @@
     "fixed_periods": {
         "0": {
             "0-0": {
-                "label": "m",
-                "teacher_id": "__event__",
+                "label": "General English",
+                "teacher_id": "8",
                 "is_free": false,
-                "is_event": true
-            },
-            "5-5": {
-                "label": "games",
-                "teacher_id": "__event__",
-                "is_free": false,
-                "is_event": true
-            }
-        },
-        "1": {
-            "0-0": {
-                "label": "mEvent",
-                "teacher_id": "__event__",
-                "is_free": false,
-                "is_event": true
-            }
-        },
-        "2": {
-            "0-0": {
-                "label": "mEvent",
-                "teacher_id": "__event__",
-                "is_free": false,
-                "is_event": true
-            }
-        },
-        "3": {
-            "0-0": {
-                "label": "mEvent",
-                "teacher_id": "__event__",
-                "is_free": false,
-                "is_event": true
-            }
-        },
-        "4": {
-            "0-0": {
-                "label": "mEvent",
-                "teacher_id": "__event__",
-                "is_free": false,
-                "is_event": true
+                "is_event": false
             },
             "1-0": {
-                "label": "Deep Learning",
-                "teacher_id": "5",
+                "label": "General English",
+                "teacher_id": "8",
                 "is_free": false,
+                "is_event": false
+            },
+            "2-0": {
+                "label": "General English",
+                "teacher_id": "8",
+                "is_free": false,
+                "is_event": false
+            },
+            "3-0": {
+                "label": "Free",
+                "teacher_id": "__free__",
+                "is_free": true,
                 "is_event": false
             }
         }
