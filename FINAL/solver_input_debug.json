@@ -81,7 +81,7 @@
             "10": 2,
             "11": 3,
             "5": 0,
-            "1000": 8
+            "1000": 7
         },
         "1": {
             "8": 3,
@@ -205,7 +205,7 @@
             "1000": [
                 {
                     "name": "Free",
-                    "hours": 8,
+                    "hours": 7,
                     "type": "theory"
                 }
             ]
@@ -418,11 +418,17 @@
                 "teacher_id": "__event__",
                 "is_free": false,
                 "is_event": true
+            },
+            "5-5": {
+                "label": "games",
+                "teacher_id": "__event__",
+                "is_free": false,
+                "is_event": true
             }
         },
         "1": {
             "0-0": {
-                "label": "m",
+                "label": "mEvent",
                 "teacher_id": "__event__",
                 "is_free": false,
                 "is_event": true
@@ -430,7 +436,7 @@
         },
         "2": {
             "0-0": {
-                "label": "m",
+                "label": "mEvent",
                 "teacher_id": "__event__",
                 "is_free": false,
                 "is_event": true
@@ -438,7 +444,7 @@
         },
         "3": {
             "0-0": {
-                "label": "m",
+                "label": "mEvent",
                 "teacher_id": "__event__",
                 "is_free": false,
                 "is_event": true
@@ -446,7 +452,7 @@
         },
         "4": {
             "0-0": {
-                "label": "m",
+                "label": "mEvent",
                 "teacher_id": "__event__",
                 "is_free": false,
                 "is_event": true

@@ -179,10 +179,20 @@ def generate_timetable(
                             return best_cell  # can't do better, backtrack immediately
         return best_cell
 
+    def subject_already_on_day(class_idx, slot, subject_name):
+        """Return True if subject_name already appears on the same day for class_idx."""
+        day = slot // No_of_periods
+        day_start = day * No_of_periods
+        day_end   = day_start + No_of_periods
+        for s in range(day_start, day_end):
+            if Timetable[s][class_idx] == subject_name:
+                return True
+        return False
+
     def solve(depth=0):
         x, y = find_empty()
         if x == -1:
-            return True  # all cells filled
+            return True
 
         if depth % 50 == 0:
             logging.debug(f"Solving Slot {x}, Class {y}. Depth: {depth}")
@@ -194,25 +204,27 @@ def generate_timetable(
             if class_to_teacher[y].get(i, 0) > 0 and main_teacher_list[x][i]["available"]:
                 t_name = teacher_list[i]["Name"]
 
-                class_to_teacher[y][i] -= 1
-                main_teacher_list[x][i]["available"] = False
-
                 assigned_name = t_name
                 sub_ptr = None
                 if y in subject_map and i in subject_map[y]:
                     for sub in subject_map[y][i]:
                         if sub["type"] == "theory" and sub["hours"] > 0:
                             assigned_name = sub["name"]
-                            sub["hours"] -= 1
                             sub_ptr = sub
                             break
 
+                if assigned_name != "Free" and subject_already_on_day(y, x, assigned_name):
+                    continue
+
+                class_to_teacher[y][i] -= 1
+                main_teacher_list[x][i]["available"] = False
+                if sub_ptr:
+                    sub_ptr["hours"] -= 1
                 Timetable[x][y] = assigned_name
 
                 if solve(depth + 1):
                     return True
 
-                # Backtrack
                 logging.warning(f"Backtracking Slot {x}, Class {y}, Teacher {t_name}")
                 Timetable[x][y] = 0
                 class_to_teacher[y][i] += 1
