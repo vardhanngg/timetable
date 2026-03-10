@@ -142,6 +142,51 @@
             color: #0d6efd;
         }
 
+        /* ── Global periods tab ── */
+        .global-slot-row {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin-bottom: 10px;
+            transition: box-shadow .15s;
+        }
+        .global-slot-row:hover { box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+        .global-slot-row .class-pill {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: #f0f4ff; border-radius: 6px;
+            padding: 3px 10px; font-size: 0.8rem; margin: 2px;
+        }
+        .global-slot-row .class-pill.clash {
+            background: #fee2e2; color: #b91c1c;
+        }
+        .global-add-btn {
+            border: 2px dashed #0d6efd;
+            background: #f8faff;
+            border-radius: 10px;
+            padding: 12px;
+            text-align: center;
+            cursor: pointer;
+            color: #0d6efd;
+            font-weight: 600;
+            transition: all .15s;
+        }
+        .global-add-btn:hover { background: #e8f0fe; }
+
+        /* ── Group management modal ── */
+        .group-chip {
+            display: inline-flex; align-items: center; gap: 5px;
+            background: #e0e7ff; color: #3730a3; border-radius: 20px;
+            padding: 3px 10px; font-size: 0.78rem; font-weight: 600; margin: 2px;
+        }
+        .group-chip .rm { cursor: pointer; opacity: .6; }
+        .group-chip .rm:hover { opacity: 1; }
+        .selector-group-label {
+            font-size: 0.7rem; font-weight: 700; color: #6c757d;
+            letter-spacing: .5px; padding: 4px 8px; pointer-events: none;
+        }
+        /* multi-class badge on slot cards */
+        .badge-multi { background:#fde68a; color:#92400e; }
 
     </style>
     <meta name="periods-count" content="{{ periods }}">
@@ -161,27 +206,34 @@
         <div class="row align-items-center g-2">
             <div class="col-md-4">
                 <!-- Tab switcher -->
-                <div class="d-flex gap-2">
-                    <button class="step-pill active" id="tab-unavail-btn" onclick="switchTab('unavail')">
-                        🚫 Teacher Unavailability
-                    </button>
-                    <button class="step-pill" id="tab-fixed-btn" onclick="switchTab('fixed')">
+                <div class="d-flex gap-2 flex-wrap">
+                    <button class="step-pill active" id="tab-fixed-btn" onclick="switchTab('fixed')">
                         📌 Fixed Slots
+                    </button>
+                    <button class="step-pill" id="tab-unavail-btn" onclick="switchTab('unavail')">
+                        🚫 Unavailability
                     </button>
                 </div>
             </div>
 
             <!-- Class selector (only shown for fixed-slots tab) -->
             <div class="col-md-4" id="classSelectorWrap">
-                <select id="classSelector" class="form-select form-select-lg border-primary" onchange="switchClass()" style="display:none;">
-                    {% for class_name in class_data.keys() %}
-                    <option value="{{ loop.index0 }}">Class {{ class_name }}</option>
-                    {% endfor %}
+                <select id="classSelector" class="form-select form-select-lg border-primary" onchange="switchClass()">
+                    <optgroup label="─────────────">
+                        <option value="__all__">🌐 All Classes</option>
+                    </optgroup>
+                    <optgroup label="── Groups ──" id="groupOptGroup" style="display:none;">
+                    </optgroup>
+                    <optgroup label="── Individual ──">
+                        {% for class_name in class_data.keys() %}
+                        <option value="{{ loop.index0 }}">Class {{ class_name }}</option>
+                        {% endfor %}
+                    </optgroup>
                 </select>
             </div>
 
             <!-- Teacher selector (only shown for unavailability tab) -->
-            <div class="col-md-4" id="teacherSelectorWrap">
+            <div class="col-md-4" id="teacherSelectorWrap" style="display:none;">
                 <select id="teacherSelector" class="form-select form-select-lg border-danger" onchange="switchTeacher()">
                     <option value="">— Select a Teacher —</option>
                 </select>
@@ -202,21 +254,22 @@
 
         <!-- Active tab hint -->
         <div class="mt-2">
-            <small class="text-muted" id="tab-hint-unavail">
+            <small class="text-muted" id="tab-hint-unavail" style="display:none;">
                 Select a teacher, then use the <strong>dropdowns</strong> to pick which periods they are unavailable on each day.
                 Hold <kbd>Ctrl</kbd> (or <kbd>Cmd</kbd>) to select multiple. These slots will be completely skipped for that teacher.
             </small>
-            <small class="text-muted" id="tab-hint-fixed" style="display:none;">
+            <small class="text-muted" id="tab-hint-fixed">
                 Pick a subject/teacher <em>or</em> "Free Period" to lock a slot before solving.
                 Labs/blocks auto-extend downward if continuous &gt; 1.
             </small>
+
         </div>
     </div>
 
     <!-- ══════════════════════════════════════════════════════
          TAB 1 — TEACHER UNAVAILABILITY
     ══════════════════════════════════════════════════════ -->
-    <div id="tab-unavail" class="mt-3">
+    <div id="tab-unavail" class="mt-3" style="display:none;">
         <div id="unavail-placeholder" class="text-center py-5 text-muted">
             <div style="font-size:3rem;">👆</div>
             <p class="mt-2">Select a teacher above to configure their unavailable periods.</p>
@@ -265,9 +318,121 @@
     </div>
 
     <!-- ══════════════════════════════════════════════════════
-         TAB 2 — FIXED SLOTS (original, untouched)
+         TAB 2 — FIXED SLOTS
     ══════════════════════════════════════════════════════ -->
-    <div id="tab-fixed" class="mt-3" style="display:none;">
+    <div id="tab-fixed" class="mt-3">
+
+        <!-- ── Groups panel (collapsible) ── -->
+        <div class="mb-3">
+            <div class="d-flex align-items-center gap-2 mb-2" style="cursor:pointer;"
+                 onclick="toggleGroupPanel()">
+                <span style="font-size:1.1rem;">👥</span>
+                <strong style="font-size:.95rem;">Class Groups</strong>
+                <small class="text-muted">— create groups for bulk slot assignment</small>
+                <span id="groupPanelChevron" class="ms-auto text-muted">▼</span>
+            </div>
+
+            <div id="groupPanel" style="display:none;">
+                <div class="card border-0 bg-white shadow-sm mb-2">
+                    <div class="card-body py-3">
+                        <!-- Create group row -->
+                        <div class="row g-2 align-items-end mb-3">
+                            <div class="col-md-5">
+                                <label class="form-label fw-bold text-muted mb-1" style="font-size:.75rem;">GROUP NAME</label>
+                                <input id="groupNameInput" type="text" class="form-control form-control-sm"
+                                       placeholder="e.g. Science Dept, Classes 1-5">
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label fw-bold text-muted mb-1" style="font-size:.75rem;">SELECT CLASSES</label>
+                                <div id="groupClassCheckboxes" class="d-flex flex-wrap gap-2 p-2 rounded"
+                                     style="background:#f8f9fa; border:1px solid #dee2e6; max-height:90px; overflow-y:auto;">
+                                    {% for class_name in class_data.keys() %}
+                                    <div class="form-check form-check-inline mb-0">
+                                        <input class="form-check-input group-cls-check"
+                                               type="checkbox" value="{{ loop.index0 }}"
+                                               id="grpchk_{{ loop.index0 }}">
+                                        <label class="form-check-label" style="font-size:.8rem;"
+                                               for="grpchk_{{ loop.index0 }}">{{ class_name }}</label>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <button class="btn btn-primary btn-sm w-100" onclick="saveGroup()">+ Save</button>
+                            </div>
+                        </div>
+
+                        <!-- Existing groups -->
+                        <div id="existingGroupsList">
+                            <p class="text-muted mb-0" style="font-size:.82rem;">No groups yet.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Global Periods panel (collapsible) ── -->
+        <div class="mb-3">
+            <div class="d-flex align-items-center gap-2 mb-2" style="cursor:pointer;"
+                 onclick="toggleGlobalPanel()">
+                <span style="font-size:1.1rem;">🌐</span>
+                <strong style="font-size:.95rem;">Global Periods</strong>
+                <small class="text-muted">— fix a period for all classes at once</small>
+                <span id="globalPanelChevron" class="ms-auto text-muted">▼</span>
+            </div>
+
+            <div id="globalPanel" style="display:none;">
+                <div id="global-no-common" class="text-muted py-2" style="display:none; font-size:.85rem;">
+                    🔍 No subjects common to all classes found.
+                </div>
+
+                <div id="global-content">
+                    <div class="card border-0 bg-white shadow-sm mb-3">
+                        <div class="card-body py-3">
+                            <div class="row g-2 align-items-end">
+                                <div class="col-md-4">
+                                    <label class="form-label fw-bold text-muted mb-1" style="font-size:.75rem;">COMMON SUBJECT</label>
+                                    <select id="globalSubjectSel" class="form-select form-select-sm" onchange="onGlobalSubjectChange()">
+                                        <option value="">— Select subject —</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label fw-bold text-muted mb-1" style="font-size:.75rem;">DAY</label>
+                                    <select id="globalDaySel" class="form-select form-select-sm">
+                                        {% set day_names_g = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"] %}
+                                        {% for d in range(days) %}
+                                        <option value="{{ d }}">{{ day_names_g[d] if d < 7 else "Day " ~ (d+1) }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label fw-bold text-muted mb-1" style="font-size:.75rem;">PERIOD</label>
+                                    <select id="globalPeriodSel" class="form-select form-select-sm">
+                                        {% for p in range(periods) %}
+                                        <option value="{{ p }}">P{{ p + 1 }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <button class="btn btn-primary btn-sm w-100" onclick="addGlobalSlot()">+ Add</button>
+                                </div>
+                            </div>
+
+                            <!-- Preview pills -->
+                            <div id="globalPreview" class="mt-2" style="display:none;">
+                                <div class="fw-bold mb-1" style="font-size:.75rem; color:#6c757d;">ASSIGNS:</div>
+                                <div id="globalPreviewPills" class="d-flex flex-wrap gap-1"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Added global slots list -->
+                    <div id="globalSlotList"></div>
+                </div>
+            </div>
+        </div>
+        <hr class="mt-0 mb-3">
+
         <div class="table-responsive">
             <table class="table table-bordered bg-white">
                 <thead class="table-dark text-center">
@@ -301,6 +466,8 @@
             </table>
         </div>
     </div>
+
+
 
 </div><!-- /container-fluid -->
 
@@ -353,15 +520,16 @@ Object.entries(allTeachers)
 //  TAB SWITCHING
 // ══════════════════════════════════════════════════════════════════════════════
 function switchTab(tab) {
-    const isUnavail = tab === 'unavail';
-    document.getElementById('tab-unavail').style.display     = isUnavail ? '' : 'none';
-    document.getElementById('tab-fixed').style.display       = isUnavail ? 'none' : '';
-    document.getElementById('tab-unavail-btn').classList.toggle('active', isUnavail);
-    document.getElementById('tab-fixed-btn').classList.toggle('active', !isUnavail);
-    document.getElementById('tab-hint-unavail').style.display = isUnavail ? '' : 'none';
-    document.getElementById('tab-hint-fixed').style.display   = isUnavail ? 'none' : '';
-    document.getElementById('teacherSelectorWrap').style.display = isUnavail ? '' : 'none';
-    document.getElementById('classSelector').style.display        = isUnavail ? 'none' : '';
+    ['unavail','fixed'].forEach(t => {
+        document.getElementById(`tab-${t}`).style.display          = t === tab ? '' : 'none';
+        document.getElementById(`tab-${t}-btn`).classList.toggle('active', t === tab);
+        const hint = document.getElementById(`tab-hint-${t}`);
+        if (hint) hint.style.display = t === tab ? '' : 'none';
+    });
+    document.getElementById('teacherSelectorWrap').style.display  = tab === 'unavail' ? '' : 'none';
+    document.getElementById('classSelectorWrap').style.display    = tab === 'fixed'   ? '' : 'none';
+    // Build global subject dropdown whenever fixed tab opens
+    if (tab === 'fixed') buildGlobalSubjectDropdown();
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -476,30 +644,165 @@ function styleCard(card, mode) {
     }
 }
 
-function switchClass() {
-    const clsIdx = document.getElementById('classSelector').value;
-    const currentClassName = classKeys[clsIdx];
-    const teachersForClass  = classInfo[currentClassName] || [];
-    if (!storage[clsIdx]) storage[clsIdx] = {};
-    document.querySelectorAll('.slot-card').forEach(card => {
-        const teacherSelect = card.querySelector('.teacher-select');
-        const eventInput    = card.querySelector('.event-label-input');
-        const slot          = card.dataset.slot;
-        buildOptions(teacherSelect, teachersForClass);
-        const saved = storage[clsIdx][slot];
-        if (saved) {
-            teacherSelect.value = saved.teacher_id;
-            if (saved.is_event) {
-                styleCard(card, 'event');
-                eventInput.value = saved.label || '';
-            } else {
-                styleCard(card, saved.is_free ? 'free' : 'subject');
-            }
-        } else {
-            teacherSelect.value = '__none__';
-            styleCard(card, 'default');
-        }
+// ══════════════════════════════════════════════════════════════════════════════
+//  GROUP MANAGEMENT
+// ══════════════════════════════════════════════════════════════════════════════
+let groups = [];  // [{ name, classIndices: [0,1,2,...] }]
+
+function toggleGroupPanel() {
+    const panel   = document.getElementById('groupPanel');
+    const chevron = document.getElementById('groupPanelChevron');
+    const open    = panel.style.display === 'none';
+    panel.style.display = open ? '' : 'none';
+    chevron.textContent = open ? '▲' : '▼';
+    if (open) renderExistingGroups();
+}
+
+function saveGroup() {
+    const name = document.getElementById('groupNameInput').value.trim();
+    if (!name) { showToast('Enter a group name.', 'warning'); return; }
+    const indices = [...document.querySelectorAll('.group-cls-check:checked')]
+        .map(c => parseInt(c.value));
+    if (!indices.length) { showToast('Select at least one class.', 'warning'); return; }
+    if (groups.find(g => g.name === name)) { showToast('A group with that name already exists.', 'warning'); return; }
+    groups.push({ name, classIndices: indices });
+    saveSession();
+    rebuildGroupOptGroup();
+    renderExistingGroups();
+    document.getElementById('groupNameInput').value = '';
+    document.querySelectorAll('.group-cls-check').forEach(c => c.checked = false);
+    showToast(`Group "${name}" saved.`, 'success');
+}
+
+function deleteGroup(idx) {
+    groups.splice(idx, 1);
+    saveSession();
+    rebuildGroupOptGroup();
+    renderExistingGroups();
+}
+
+function rebuildGroupOptGroup() {
+    const og = document.getElementById('groupOptGroup');
+    og.innerHTML = '';
+    if (!groups.length) { og.style.display = 'none'; return; }
+    og.style.display = '';
+    og.label = '── Groups ──';
+    groups.forEach((g, idx) => {
+        const opt = document.createElement('option');
+        opt.value = `__group__${idx}`;
+        const names = g.classIndices.map(i => classKeys[i] ? `Class ${classKeys[i]}` : '').join(', ');
+        opt.textContent = `👥 ${g.name} (${names})`;
+        og.appendChild(opt);
     });
+}
+
+function renderExistingGroups() {
+    const list = document.getElementById('existingGroupsList');
+    if (!groups.length) { list.innerHTML = '<p class="text-muted" style="font-size:.82rem;">No groups yet.</p>'; return; }
+    list.innerHTML = '<div class="fw-bold mb-2" style="font-size:.82rem;">Existing Groups</div>' +
+        groups.map((g, idx) => {
+            const pills = g.classIndices.map(i =>
+                `<span class="group-chip">${classKeys[i] ? 'Class '+classKeys[i] : i}</span>`
+            ).join('');
+            return `<div class="d-flex align-items-start justify-content-between mb-2 p-2 rounded" style="background:#f8f9fa;">
+                <div><strong>${g.name}</strong><div class="mt-1">${pills}</div></div>
+                <button class="btn btn-sm btn-outline-danger ms-2" onclick="deleteGroup(${idx})">✕</button>
+            </div>`;
+        }).join('');
+}
+
+// Returns array of class indices for the current selector value
+function getSelectedClassIndices() {
+    const val = document.getElementById('classSelector').value;
+    if (val === '__all__') return classKeys.map((_, i) => i);
+    if (val.startsWith('__group__')) {
+        const gIdx = parseInt(val.replace('__group__', ''));
+        return groups[gIdx] ? groups[gIdx].classIndices : [];
+    }
+    return [parseInt(val)];
+}
+
+// Is it a multi-class selection?
+function isMultiClass() {
+    const val = document.getElementById('classSelector').value;
+    return val === '__all__' || val.startsWith('__group__');
+}
+
+function switchClass() {
+    const indices = getSelectedClassIndices();
+    const multi   = isMultiClass();
+
+    if (multi) {
+        // Multi-class: build options from common subjects across selected classes
+        const unionTeachers = getUnionTeachersForClasses(indices);
+        document.querySelectorAll('.slot-card').forEach(card => {
+            const teacherSelect = card.querySelector('.teacher-select');
+            const slot          = card.dataset.slot;
+            buildOptions(teacherSelect, unionTeachers);
+
+            // Show a summary badge if ALL selected classes have the same thing fixed
+            const vals = indices.map(ci => storage[ci] && storage[ci][slot]);
+            const allSame = vals.every(v => v && v.label === vals[0].label);
+            if (allSame && vals[0]) {
+                teacherSelect.value = vals[0].teacher_id;
+                if (vals[0].is_event) {
+                    styleCard(card, 'event');
+                    card.querySelector('.event-label-input').value = vals[0].label || '';
+                } else {
+                    styleCard(card, vals[0].is_free ? 'free' : 'subject');
+                }
+            } else if (vals.some(v => v)) {
+                // Mixed — show partial badge
+                styleCard(card, 'default');
+                const badgeWrap = card.querySelector('.fixed-badge-wrap');
+                badgeWrap.innerHTML = '<span class="fixed-badge badge-multi">⚡ Mixed</span>';
+            } else {
+                teacherSelect.value = '__none__';
+                styleCard(card, 'default');
+            }
+        });
+    } else {
+        // Single class — original logic
+        const clsIdx = parseInt(indices[0]);
+        const currentClassName = classKeys[clsIdx];
+        const teachersForClass  = classInfo[currentClassName] || [];
+        if (!storage[clsIdx]) storage[clsIdx] = {};
+        document.querySelectorAll('.slot-card').forEach(card => {
+            const teacherSelect = card.querySelector('.teacher-select');
+            const eventInput    = card.querySelector('.event-label-input');
+            const slot          = card.dataset.slot;
+            buildOptions(teacherSelect, teachersForClass);
+            const saved = storage[clsIdx][slot];
+            if (saved) {
+                teacherSelect.value = saved.teacher_id;
+                if (saved.is_event) {
+                    styleCard(card, 'event');
+                    eventInput.value = saved.label || '';
+                } else {
+                    styleCard(card, saved.is_free ? 'free' : 'subject');
+                }
+            } else {
+                teacherSelect.value = '__none__';
+                styleCard(card, 'default');
+            }
+        });
+    }
+    refreshUndoButtons();
+}
+
+// Build list of subjects common to ALL selected classes only
+function getUnionTeachersForClasses(indices) {
+    if (!indices.length) return [];
+    const subjectSets = indices.map(ci => {
+        const cname = classKeys[ci];
+        return new Set((classInfo[cname] || []).map(t => t.subject.trim().toLowerCase()));
+    });
+    const commonSet = subjectSets.reduce((acc, s) => new Set([...acc].filter(x => s.has(x))));
+    // Return entries from the first class, filtered to common subjects only
+    const firstCname = classKeys[indices[0]];
+    return (classInfo[firstCname] || [])
+        .filter(t => commonSet.has(t.subject.trim().toLowerCase()))
+        .sort((a, b) => a.subject.localeCompare(b.subject));
 }
 
 document.addEventListener('change', function(e) {
@@ -507,50 +810,92 @@ document.addEventListener('change', function(e) {
     if (!target.classList.contains('teacher-select')) return;
     const card   = target.closest('.slot-card');
     if (!card) return;
-    const slot   = card.dataset.slot;
+    const slot        = card.dataset.slot;
     const [day, period] = slot.split('-').map(Number);
-    const clsIdx = document.getElementById('classSelector').value;
-    if (!storage[clsIdx]) storage[clsIdx] = {};
-    snapshotClass(clsIdx);   // ← snapshot before mutation
-    const selectedVal = target.value;
-    if (selectedVal === '__none__') { delete storage[clsIdx][slot]; styleCard(card, 'default'); return; }
-    if (selectedVal === '__free__') { storage[clsIdx][slot] = { label: 'Free', teacher_id: '__free__', is_free: true, is_event: false }; styleCard(card, 'free'); return; }
-    if (selectedVal === '__event__') {
-        const eventInput = card.querySelector('.event-label-input');
-        styleCard(card, 'event');
-        const label = eventInput.value.trim() || 'Event';
-        storage[clsIdx][slot] = { label, teacher_id: '__event__', is_free: false, is_event: true };
-        return;
-    }
-    const selectedOption = target.options[target.selectedIndex];
-    const subject    = selectedOption.dataset.subject;
-    const continuous = parseInt(selectedOption.dataset.continuous) || 1;
-    const currentClassName = classKeys[clsIdx];
-    const teachersForClass = classInfo[currentClassName] || [];
-    const teacherEntry = teachersForClass.find(t => String(t.teacher_id) === String(selectedVal));
-    const maxHours = teacherEntry ? teacherEntry.hours : 999;
-    let alreadyFixed = 0;
-    for (let s in storage[clsIdx]) {
-        if (s !== slot && storage[clsIdx][s] && String(storage[clsIdx][s].teacher_id) === String(selectedVal)) alreadyFixed++;
-    }
-    if (alreadyFixed >= maxHours) {
-        alert('⚠️ "' + subject + '" only has ' + maxHours + ' period(s).\nAll are already fixed in other slots!');
-        target.value = '__none__'; styleCard(card, 'default'); return;
-    }
-    storage[clsIdx][slot] = { label: subject, teacher_id: selectedVal, is_free: false, is_event: false };
-    styleCard(card, 'subject');
-    if (continuous > 1) {
+    const selectedVal   = target.value;
+    const selectedOption = selectedVal !== '__none__' && selectedVal !== '__free__' && selectedVal !== '__event__'
+        ? target.options[target.selectedIndex] : null;
+    const subject    = selectedOption ? selectedOption.dataset.subject : null;
+    const continuous = selectedOption ? (parseInt(selectedOption.dataset.continuous) || 1) : 1;
+
+    const indices = getSelectedClassIndices();
+
+    indices.forEach(clsIdx => {
+        if (!storage[clsIdx]) storage[clsIdx] = {};
+        snapshotClass(clsIdx);
+
+        if (selectedVal === '__none__') {
+            delete storage[clsIdx][slot];
+            return;
+        }
+        if (selectedVal === '__free__') {
+            storage[clsIdx][slot] = { label: 'Free', teacher_id: '__free__', is_free: true, is_event: false };
+            return;
+        }
+        if (selectedVal === '__event__') {
+            const eventInput = card.querySelector('.event-label-input');
+            // Show input so user can type; read whatever is there now
+            eventInput.style.display = 'block';
+            const label = eventInput.value.trim() || 'Event';
+            storage[clsIdx][slot] = { label, teacher_id: '__event__', is_free: false, is_event: true };
+            return;
+        }
+
+        // For multi-class: look up the teacher for THIS subject in EACH class
+        const cname = classKeys[clsIdx];
+        const teachersForClass = classInfo[cname] || [];
+        // Match by subject name (since teacher_id from first class may differ)
+        const teacherEntry = teachersForClass.find(t =>
+            t.subject.trim().toLowerCase() === (subject || '').trim().toLowerCase()
+        );
+        if (!teacherEntry) {
+            // Subject doesn't exist in this class — clear any stale data for this slot
+            delete storage[clsIdx][slot];
+            return;
+        }
+
+        const tidForClass = String(teacherEntry.teacher_id);
+        const maxHours    = teacherEntry.hours || 999;
+        let alreadyFixed  = 0;
+        for (let s in storage[clsIdx]) {
+            if (s !== slot && storage[clsIdx][s] && String(storage[clsIdx][s].teacher_id) === tidForClass) alreadyFixed++;
+        }
+        if (alreadyFixed >= maxHours) {
+            showToast(`⚠️ "${subject}" in Class ${cname} only has ${maxHours} period(s). Already fully fixed!`, 'warning');
+            return;
+        }
+        storage[clsIdx][slot] = { label: subject, teacher_id: tidForClass, is_free: false, is_event: false };
+
+        // Labs/continuous — also apply to next slots for this class
+        if (continuous > 1) {
+            for (let i = 1; i < continuous; i++) {
+                const nextP = period + i;
+                if (nextP >= NUM_PERIODS) break;
+                const nextSlot = `${day}-${nextP}`;
+                storage[clsIdx][nextSlot] = { label: subject, teacher_id: tidForClass, is_free: false, is_event: false };
+            }
+        }
+    });
+
+    // Update card visuals based on current selection (use first class as reference)
+    if (selectedVal === '__none__') { styleCard(card, 'default'); }
+    else if (selectedVal === '__free__') { styleCard(card, 'free'); }
+    else if (selectedVal === '__event__') { styleCard(card, 'event'); }
+    else { styleCard(card, 'subject'); }
+
+    // Also update continuous slot card visuals
+    if (continuous > 1 && selectedVal !== '__none__') {
         for (let i = 1; i < continuous; i++) {
             const nextP = period + i;
             if (nextP >= NUM_PERIODS) break;
-            const nextSlot = `${day}-${nextP}`;
-            const nextCard = document.querySelector(`.slot-card[data-slot="${nextSlot}"]`);
-            if (!nextCard) break;
-            nextCard.querySelector('.teacher-select').value = selectedVal;
-            storage[clsIdx][nextSlot] = { label: subject, teacher_id: selectedVal, is_free: false, is_event: false };
-            styleCard(nextCard, 'subject');
+            const nextCard = document.querySelector(`.slot-card[data-slot="${day}-${nextP}"]`);
+            if (nextCard) {
+                nextCard.querySelector('.teacher-select').value = selectedVal;
+                styleCard(nextCard, 'subject');
+            }
         }
     }
+
     saveSession();
     refreshUndoButtons();
 });
@@ -559,11 +904,14 @@ document.addEventListener('input', function(e) {
     if (!e.target.classList.contains('event-label-input')) return;
     const card = e.target.closest('.slot-card');
     if (!card) return;
-    const slot   = card.dataset.slot;
-    const clsIdx = document.getElementById('classSelector').value;
-    if (storage[clsIdx] && storage[clsIdx][slot] && storage[clsIdx][slot].is_event) {
-        storage[clsIdx][slot].label = e.target.value.trim() || 'Event';
-    }
+    const slot  = card.dataset.slot;
+    const label = e.target.value.trim() || 'Event';
+    // Write label to ALL currently selected class indices
+    getSelectedClassIndices().forEach(clsIdx => {
+        if (storage[clsIdx] && storage[clsIdx][slot] && storage[clsIdx][slot].is_event) {
+            storage[clsIdx][slot].label = label;
+        }
+    });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -714,21 +1062,182 @@ function runSolver() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+//  GLOBAL PERIODS TAB LOGIC
+// ══════════════════════════════════════════════════════════════════════════════
+
+// globalSlots: array of { subject, day, period, perClass: [{clsIdx, clsName, teacher, teacher_id}] }
+let globalSlots = [];
+
+function getCommonSubjects() {
+    // Find subjects whose name appears in every class
+    const subjectsByClass = classKeys.map(cname =>
+        new Set((classInfo[cname] || []).map(t => t.subject.trim().toLowerCase()))
+    );
+    if (!subjectsByClass.length) return [];
+    let common = subjectsByClass[0];
+    for (let i = 1; i < subjectsByClass.length; i++) {
+        common = new Set([...common].filter(s => subjectsByClass[i].has(s)));
+    }
+    // Return original-case names (use first class as source of truth)
+    return [...common].map(subjectLower => {
+        const t = (classInfo[classKeys[0]] || []).find(t => t.subject.trim().toLowerCase() === subjectLower);
+        return t ? t.subject.trim() : subjectLower;
+    }).sort();
+}
+
+function toggleGlobalPanel() {
+    const panel   = document.getElementById('globalPanel');
+    const chevron = document.getElementById('globalPanelChevron');
+    const open    = panel.style.display === 'none';
+    panel.style.display = open ? '' : 'none';
+    chevron.textContent = open ? '▲' : '▼';
+    if (open) buildGlobalSubjectDropdown();
+}
+
+function buildGlobalSubjectDropdown() {
+    const sel    = document.getElementById('globalSubjectSel');
+    const common = getCommonSubjects();
+    sel.innerHTML = '<option value="">— Select subject —</option>';
+    common.forEach(subj => {
+        const opt = document.createElement('option');
+        opt.value = subj; opt.textContent = subj;
+        sel.appendChild(opt);
+    });
+    document.getElementById('global-no-common').style.display  = common.length === 0 ? '' : 'none';
+    document.getElementById('global-content').style.display    = common.length === 0 ? 'none' : '';
+    onGlobalSubjectChange();
+}
+
+function onGlobalSubjectChange() {
+    const subj    = document.getElementById('globalSubjectSel').value;
+    const preview = document.getElementById('globalPreview');
+    const pills   = document.getElementById('globalPreviewPills');
+    if (!subj) { preview.style.display = 'none'; return; }
+
+    pills.innerHTML = '';
+    classKeys.forEach((cname, cidx) => {
+        const entry = (classInfo[cname] || []).find(t => t.subject.trim() === subj);
+        const pill  = document.createElement('span');
+        pill.className = 'class-pill';
+        pill.innerHTML = entry
+            ? `<strong>Class ${cname}</strong> → ${entry.teacher}`
+            : `<strong>Class ${cname}</strong> → <em class="text-danger">not found</em>`;
+        pills.appendChild(pill);
+    });
+    preview.style.display = '';
+}
+
+function addGlobalSlot() {
+    const subj   = document.getElementById('globalSubjectSel').value;
+    const day    = parseInt(document.getElementById('globalDaySel').value);
+    const period = parseInt(document.getElementById('globalPeriodSel').value);
+    if (!subj) { showToast('Please select a subject first.', 'warning'); return; }
+
+    const slot = `${day}-${period}`;
+
+    // Check if already added
+    if (globalSlots.some(g => g.subject === subj && g.day === day && g.period === period)) {
+        showToast('This global slot is already added.', 'warning'); return;
+    }
+
+    // Build per-class assignment
+    const perClass = [];
+    let anyMissing = false;
+    classKeys.forEach((cname, cidx) => {
+        const entry = (classInfo[cname] || []).find(t => t.subject.trim() === subj);
+        if (!entry) { anyMissing = true; return; }
+
+        // Check if this class already has this slot fixed to something
+        if (storage[cidx] && storage[cidx][slot]) {
+            showToast(`Class ${cname} already has slot ${slot} fixed to "${storage[cidx][slot].label}". Clear it first.`, 'warning');
+            return;
+        }
+        perClass.push({ cidx, cname, teacher: entry.teacher, teacher_id: entry.teacher_id, subject: entry.subject });
+    });
+
+    if (anyMissing) {
+        showToast(`Some classes don't have "${subj}" — cannot apply globally.`, 'danger'); return;
+    }
+
+    // Apply to storage for every class
+    perClass.forEach(({ cidx, teacher, teacher_id, subject }) => {
+        if (!storage[cidx]) storage[cidx] = {};
+        snapshotClass(cidx);
+        storage[cidx][slot] = { label: subject, teacher_id: String(teacher_id), is_free: false, is_event: false };
+    });
+
+    // Save in globalSlots list for display
+    const DAY_NAMES_G = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+    globalSlots.push({ subj, day, period, slot, perClass,
+        dayLabel: DAY_NAMES_G[day] || `Day ${day+1}`, periodLabel: `P${period+1}` });
+
+    saveSession();
+    renderGlobalSlotList();
+    showToast(`✓ "${subj}" fixed for all classes on ${DAY_NAMES_G[day]||'Day '+(day+1)}, P${period+1}.`, 'success');
+}
+
+function removeGlobalSlot(idx) {
+    const g = globalSlots[idx];
+    if (!g) return;
+    // Remove from storage for every class
+    g.perClass.forEach(({ cidx }) => {
+        if (storage[cidx]) delete storage[cidx][g.slot];
+    });
+    globalSlots.splice(idx, 1);
+    saveSession();
+    renderGlobalSlotList();
+}
+
+function renderGlobalSlotList() {
+    const list = document.getElementById('globalSlotList');
+    if (!globalSlots.length) { list.innerHTML = ''; return; }
+    list.innerHTML = globalSlots.map((g, idx) => `
+        <div class="global-slot-row">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <strong>${g.subj}</strong>
+                    <span class="text-muted ms-2" style="font-size:.85rem;">${g.dayLabel}, ${g.periodLabel}</span>
+                </div>
+                <button class="btn btn-sm btn-outline-danger" onclick="removeGlobalSlot(${idx})">✕ Remove</button>
+            </div>
+            <div class="mt-2 d-flex flex-wrap">
+                ${g.perClass.map(pc => `
+                    <span class="class-pill">
+                        <strong>Class ${pc.cname}</strong> → ${pc.teacher}
+                    </span>`).join('')}
+            </div>
+        </div>`).join('');
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 //  SESSION PERSISTENCE  (localStorage)
 // ══════════════════════════════════════════════════════════════════════════════
-const SESSION_KEY = 'timetable_fixed_slots';
-const UNAVAIL_KEY = 'timetable_unavail';
+const SESSION_KEY   = 'timetable_fixed_slots';
+const UNAVAIL_KEY   = 'timetable_unavail';
+const SESSION_TOKEN = 'timetable_session_token';
+
+// Each page render gets a unique token from Flask (class names + count as fingerprint)
+// If token changes it means new data was uploaded — wipe old session automatically
+const CURRENT_TOKEN = "{{ session_token }}";
 
 function saveSession() {
     try {
-        localStorage.setItem(SESSION_KEY, JSON.stringify(storage));
-        // Convert Sets to arrays for unavail (already objects here)
-        localStorage.setItem(UNAVAIL_KEY, JSON.stringify(unavailStorage));
+        localStorage.setItem(SESSION_KEY,    JSON.stringify(storage));
+        localStorage.setItem(UNAVAIL_KEY,    JSON.stringify(unavailStorage));
+        localStorage.setItem('timetable_global_slots', JSON.stringify(globalSlots));
+        localStorage.setItem('timetable_groups',       JSON.stringify(groups));
+        localStorage.setItem(SESSION_TOKEN,  CURRENT_TOKEN);
     } catch(e) {}
 }
 
 function loadSession() {
     try {
+        const storedToken = localStorage.getItem(SESSION_TOKEN);
+        if (storedToken !== CURRENT_TOKEN) {
+            // New timetable data — discard everything from the old session
+            clearSession(true);
+            return;
+        }
         const saved = localStorage.getItem(SESSION_KEY);
         if (saved) {
             const parsed = JSON.parse(saved);
@@ -737,13 +1246,20 @@ function loadSession() {
         }
         const savedUnavail = localStorage.getItem(UNAVAIL_KEY);
         if (savedUnavail) Object.assign(unavailStorage, JSON.parse(savedUnavail));
+        const savedGlobal = localStorage.getItem('timetable_global_slots');
+        if (savedGlobal) { globalSlots = JSON.parse(savedGlobal); renderGlobalSlotList(); }
+        const savedGroups = localStorage.getItem('timetable_groups');
+        if (savedGroups) { groups = JSON.parse(savedGroups); rebuildGroupOptGroup(); }
     } catch(e) {}
 }
 
-function clearSession() {
+function clearSession(silent) {
     localStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(UNAVAIL_KEY);
-    showToast('Session cleared.', 'success');
+    localStorage.removeItem('timetable_global_slots');
+    localStorage.removeItem('timetable_groups');
+    localStorage.removeItem(SESSION_TOKEN);
+    if (!silent) showToast('Session cleared.', 'success');
 }
 
 // Auto-save on any storage change — hook into change listener
@@ -758,6 +1274,7 @@ window.onload = function() {
 // Patch change handler to snapshot before each change & auto-save
 const _origChangeHandler = document.addEventListener;
 </script>
+
 
 <!-- ── Toast panel for validation warnings ── -->
 <div class="toast-panel" id="toastPanel"></div>

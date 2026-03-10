@@ -10,11 +10,9 @@
         .container { max-width: 1300px; margin-top: 30px; padding-bottom: 50px; }
         .table-container { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
         
-        /* Global Config Styling */
         .config-section { background: #e9ecef; border-radius: 12px; padding: 20px; margin-bottom: 25px; border: 1px solid #dee2e6; }
         .slot-badge { font-size: 1.1rem; padding: 8px 15px; }
 
-        /* Table Styling */
         .editable { 
             cursor: pointer; 
             border-bottom: 2px solid #e9ecef; 
@@ -26,6 +24,9 @@
         }
         .editable:hover { background-color: #fff9db; border-bottom-color: #ffc107; }
         .editable:focus { background-color: #fff; outline: 2px solid #0d6efd; border-bottom-color: transparent; }
+
+        /* Highlight invalid cells */
+        .editable.invalid { background-color: #fee2e2 !important; border-bottom-color: #dc3545 !important; outline: 2px solid #dc3545; }
         
         .class-cell { position: relative; min-width: 150px; }
         .row-controls { 
@@ -107,7 +108,7 @@
             <tr>
                 <th>Class</th>
                 <th>Course Name</th>
-                <th>Faculty ID</th>
+                <th>Faculty Name</th>
                 <th style="width: 130px;">Type</th>
                 <th class="text-center" style="width: 320px;">Hours Config (Total / Block / Room)</th>
                 <th style="width: 50px;"></th>
@@ -163,17 +164,13 @@
     </table>
 </div>
 
-
-
 <script>
-    // 1. Live Preview Calculation
     function updatePreview() {
         const days = document.getElementById('global_days').value;
         const periods = document.getElementById('global_periods').value;
         document.getElementById('slot_preview').innerText = days * periods;
     }
 
-    // 2. Live cleaning for Theory hours
     function sanitizeInt(element) {
         let clean = element.innerText.replace(/\D/g, '');
         if (element.innerText !== clean) {
@@ -189,7 +186,6 @@
         }
     }
 
-    // 3. UI Toggle for Theory vs Lab
     function toggleType(select) {
         const row = select.closest('tr');
         const container = row.querySelector('.hours-container');
@@ -212,7 +208,6 @@
         }
     }
 
-    // 4. Dynamic Row Insertion
     function insertRow(button, direction) {
         const currentRow = button.closest('tr');
         const parentTable = currentRow.parentNode;
@@ -228,7 +223,7 @@
                 </div>
             </td>
             <td><span contenteditable="true" class="editable">New Subject</span></td>
-            <td><span contenteditable="true" class="editable text-primary fw-bold">S?</span></td>
+            <td><span contenteditable="true" class="editable text-primary fw-bold faculty-cell" placeholder="Enter faculty name">Faculty Name</span></td>
             <td>
                 <select class="form-select form-select-sm type-select" onchange="toggleType(this)">
                     <option value="Theory" selected>Theory</option>
@@ -243,15 +238,24 @@
             </td>
             <td class="text-center"><button onclick="this.closest('tr').remove()" class="btn-delete">&times;</button></td>
         `;
-        direction === 'up' ? parentTable.insertBefore(newRow, currentRow) : parentTable.insertBefore(newRow, currentRow.nextSibling);
+        direction === 'up'
+            ? parentTable.insertBefore(newRow, currentRow)
+            : parentTable.insertBefore(newRow, currentRow.nextSibling);
+
+        // Auto-focus the faculty cell so user knows to fill it
+        const facultyCell = newRow.querySelector('.faculty-cell');
+        facultyCell.classList.add('invalid');
+        facultyCell.addEventListener('input', function() {
+            if (this.innerText.trim().length > 0) this.classList.remove('invalid');
+            else this.classList.add('invalid');
+        });
+        setTimeout(() => facultyCell.focus(), 50);
     }
 
-    // 5. Final Submission (Sends Table + School Config)
     async function saveChanges() {
         const btn = document.getElementById("saveBtn");
         const originalText = btn.innerHTML;
         
-        // Grab Global Config
         const globalConfig = {
             days: parseInt(document.getElementById("global_days").value),
             periods: parseInt(document.getElementById("global_periods").value),
@@ -259,7 +263,7 @@
         };
 
         const tableData = [];
-        let validationFail = false;
+        let invalidCells = [];
 
         document.querySelectorAll("#tableBody tr").forEach(row => {
             const type = row.querySelector(".type-select").value;
@@ -276,22 +280,32 @@
                 l = 0;
             }
 
-            const teacher = row.cells[2].innerText.trim();
-            if (teacher === "" || teacher === "S?") validationFail = true;
+            const teacherEl = row.cells[2].querySelector('.editable');
+            const teacher   = teacherEl ? teacherEl.innerText.trim() : row.cells[2].innerText.trim();
+
+            // Validate: must be non-empty and not the placeholder
+            const isInvalid = !teacher || teacher === 'Faculty Name';
+            if (isInvalid) {
+                if (teacherEl) teacherEl.classList.add('invalid');
+                invalidCells.push(teacherEl);
+            } else {
+                if (teacherEl) teacherEl.classList.remove('invalid');
+            }
 
             tableData.push({
-                class: row.cells[0].innerText.trim(),
-                subject: row.cells[1].innerText.trim(),
-                teacher: teacher,
-                type: type,
-                periods: p,
+                class:      row.cells[0].innerText.trim(),
+                subject:    row.cells[1].innerText.trim(),
+                teacher:    teacher,
+                type:       type,
+                periods:    p,
                 continuous: c,
-                lab_no: l
+                lab_no:     l
             });
         });
 
-        if (validationFail) {
-            alert("⚠️ Missing Data: Ensure all courses have a Faculty ID (e.g., S1).");
+        if (invalidCells.length > 0) {
+            invalidCells[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            invalidCells[0].focus();
             return;
         }
 
@@ -302,10 +316,7 @@
             const response = await fetch('/update-data', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    config: globalConfig,
-                    table_data: tableData
-                })
+                body: JSON.stringify({ config: globalConfig, table_data: tableData })
             });
             const result = await response.json();
             if (result.status === 'success') window.location.href = result.redirect;

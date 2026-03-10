@@ -81,7 +81,7 @@
             "10": 2,
             "11": 3,
             "5": 0,
-            "1000": 8
+            "1000": 9
         },
         "1": {
             "8": 3,
@@ -90,7 +90,7 @@
             "7": 4,
             "9": 2,
             "1": 0,
-            "1001": 12
+            "1001": 13
         },
         "2": {
             "6": 4,
@@ -99,7 +99,7 @@
             "5": 5,
             "9": 2,
             "2": 0,
-            "1002": 6
+            "1002": 7
         },
         "3": {
             "3": 4,
@@ -108,14 +108,14 @@
             "1": 2,
             "0": 4,
             "10": 2,
-            "1003": 15
+            "1003": 16
         },
         "4": {
             "7": 5,
             "5": 5,
             "4": 5,
             "0": 5,
-            "1004": 15
+            "1004": 16
         }
     },
     "lab_periods": {
@@ -127,7 +127,7 @@
             ],
             "5": [
                 2,
-                2,
+                1,
                 1
             ]
         },
@@ -205,7 +205,7 @@
             "1000": [
                 {
                     "name": "Free",
-                    "hours": 8,
+                    "hours": 9,
                     "type": "theory"
                 }
             ]
@@ -261,7 +261,7 @@
             "1001": [
                 {
                     "name": "Free",
-                    "hours": 12,
+                    "hours": 13,
                     "type": "theory"
                 }
             ]
@@ -317,7 +317,7 @@
             "1002": [
                 {
                     "name": "Free",
-                    "hours": 6,
+                    "hours": 7,
                     "type": "theory"
                 }
             ]
@@ -368,7 +368,7 @@
             "1003": [
                 {
                     "name": "Free",
-                    "hours": 15,
+                    "hours": 16,
                     "type": "theory"
                 }
             ]
@@ -405,52 +405,11 @@
             "1004": [
                 {
                     "name": "Free",
-                    "hours": 15,
+                    "hours": 16,
                     "type": "theory"
                 }
             ]
         }
     },
-    "fixed_periods": {
-        "0": {
-            "0-0": {
-                "label": "m",
-                "teacher_id": "__event__",
-                "is_free": false,
-                "is_event": true
-            }
-        },
-        "1": {
-            "0-0": {
-                "label": "m",
-                "teacher_id": "__event__",
-                "is_free": false,
-                "is_event": true
-            }
-        },
-        "2": {
-            "0-0": {
-                "label": "m",
-                "teacher_id": "__event__",
-                "is_free": false,
-                "is_event": true
-            }
-        },
-        "3": {
-            "0-0": {
-                "label": "m",
-                "teacher_id": "__event__",
-                "is_free": false,
-                "is_event": true
-            }
-        },
-        "4": {
-            "0-0": {
-                "label": "m",
-                "teacher_id": "__event__",
-                "is_free": false,
-                "is_event": true
-            }
-        }
-    }
+    "fixed_periods": {}
 }

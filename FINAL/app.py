@@ -14,6 +14,17 @@ app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = os.path.abspath('uploads')
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
+# ── Clear stale session files on every app startup ───────────────────────────
+for _f in ["generated_timetable.json", "generated_metadata.json",
+           "final_schedule.json", "temp_web_data.json",
+           "last_extraction.json", "solver_input_debug.json"]:
+    try:
+        if os.path.exists(_f):
+            os.remove(_f)
+    except Exception:
+        pass
+
+
 @app.route("/")
 def home():
     return render_template("upload.html")
@@ -314,6 +325,19 @@ def download_pdf():
     WHITE = colors.white
 
 
+    # Support single-class export via ?class_idx=N
+    single_idx = request.args.get("class_idx", None)
+    if single_idx is not None:
+        try:
+            single_idx = int(single_idx)
+            class_indices = [single_idx]
+            class_names   = [class_names[single_idx]] if single_idx < len(class_names) else class_names
+        except (ValueError, IndexError):
+            class_names   = [organized_keys[i] if i < len(organized_keys) else str(i+1) for i in range(num_classes)]
+            class_indices = list(range(num_classes))
+    else:
+        class_indices = list(range(num_classes))
+
     story = []
     for cls_idx, cls_name in zip(class_indices, class_names):
         story.append(Paragraph(f"Class {cls_name} — Timetable", title_s))
@@ -519,7 +543,8 @@ def update_data():
         session_data = {
             "organized": organized_classes,
             "days": int(config.get('days', 6)),
-            "periods": int(config.get('periods', 6))
+            "periods": int(config.get('periods', 6)),
+            "session_token": str(__import__('uuid').uuid4())  # fresh token every upload
         }
         with open("temp_web_data.json", "w") as f:
             json.dump(session_data, f)
@@ -546,8 +571,9 @@ def setup_fixed():
     return render_template(
         "fixed_setup.html",
         days=stored.get('days', 6),
-        periods=periods_value,                        # guaranteed number
-        class_data=stored.get('organized', {})
+        periods=periods_value,
+        class_data=stored.get('organized', {}),
+        session_token=stored.get('session_token', 'default')
     )
 @app.route("/run-final-solver", methods=["POST"])
 def run_final_solver():

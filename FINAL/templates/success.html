@@ -18,12 +18,17 @@
         .view-tab.active { background: #0d6efd; border-color: #0d6efd; color: white; }
         .view-tab:not(.active):hover { border-color: #0d6efd; color: #0d6efd; }
 
-        /* ── Swap modal ── */
-        .swap-slot-btn { cursor: pointer; font-size: 0.78rem; opacity: 0.6; }
+        /* ── Swap highlight mode ── */
+        .swap-slot-btn { cursor: pointer; font-size: 0.78rem; opacity: 0.6; transition: opacity .15s; }
         .swap-slot-btn:hover { opacity: 1; }
-        .swappable { cursor: pointer; transition: background .15s; }
-        .swappable:hover { background: #fffbcc !important; }
-        .swap-highlight { background: #fff3cd !important; outline: 2px solid #ffc107; }
+        .swap-source-cell { background: #fff3cd !important; outline: 3px solid #ffc107; outline-offset: -2px; }
+        .swap-candidate-cell { background: #d1fae5 !important; outline: 2px dashed #16a34a;
+                                outline-offset: -2px; cursor: pointer; }
+        .swap-candidate-cell:hover { background: #6ee7b7 !important; }
+        .swap-blocked-cell { opacity: 0.4; pointer-events: none; }
+        .swap-mode-banner { position: sticky; top: 0; z-index: 500; background: #fef9c3;
+                            border-bottom: 2px solid #fbbf24; padding: 8px 16px;
+                            font-size: 0.88rem; display: none; }
 
         /* ── Export modal cards ── */
         .export-card { border: 2px solid #e2e8f0; border-radius: 14px; padding: 20px 16px;
@@ -92,27 +97,12 @@
     </div>
 </div>
 
-<!-- ── Swap Modal ── -->
-<div class="modal fade" id="swapModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
-            <div class="modal-header border-0 bg-light">
-                <h5 class="modal-title fw-bold">🔄 Swap Slot</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body bg-light px-4">
-                <p class="text-muted mb-3" style="font-size:.85rem;">
-                    Select another slot in the <strong>same class</strong> to swap with.
-                    Only safe swaps (no teacher clash) are shown.
-                </p>
-                <div id="swapSourceInfo" class="alert alert-primary py-2 mb-3" style="font-size:.85rem;"></div>
-                <div id="swapCandidates" class="list-group"></div>
-            </div>
-            <div class="modal-footer border-0 bg-light">
-                <button class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-            </div>
-        </div>
-    </div>
+
+<!-- ── Swap mode banner ── -->
+<div id="swapModeBanner" class="swap-mode-banner">
+    🟡 <strong>Swap mode:</strong> <span id="swapBannerLabel"></span>
+    &nbsp;— click a <span style="color:#16a34a;font-weight:700;">green</span> slot to swap, or
+    <a href="#" onclick="cancelSwapMode(); return false;">✕ cancel</a>
 </div>
 
 <!-- ── Main content ── -->
@@ -170,18 +160,26 @@
                             {% set slot_data = timetable[slot_index][class_idx] %}
                             {% set is_free = slot_data|string|lower == 'free' or slot_data == 0 or slot_data|string == '0' or (slot_data|string|lower).startswith('f') and slot_data|string|length <= 4 %}
                             {% set is_lab  = 'Lab' in slot_data|string %}
+                            {% set prev_index = (day * periods_per_day) + p - 1 %}
+                            {% set is_continuation = is_lab and p > 0 and timetable[prev_index][class_idx]|string == slot_data|string %}
                             {% set is_conflict = [class_idx, slot_index] in conflict_set %}
                             <td class="slot
                                 {{ 'free-period' if is_free }}
                                 {{ 'lab-period'  if is_lab  }}
                                 {{ 'conflict-cell' if is_conflict }}"
+                                id="cell-{{ class_idx }}-{{ slot_index }}"
+                                data-class-idx="{{ class_idx }}"
+                                data-slot-index="{{ slot_index }}"
+                                data-is-free="{{ 'true' if is_free else 'false' }}"
+                                data-is-continuation="{{ 'true' if is_continuation else 'false' }}"
                                 title="{{ '⚠️ Teacher conflict!' if is_conflict else '' }}">
-                                <span>{{ "Free" if is_free else slot_data }}</span>
+                                <span class="slot-label">{{ "Free" if is_free else slot_data }}</span>
                                 <br><small class="swap-slot-btn text-muted"
                                     data-swap-class="{{ class_idx }}"
                                     data-swap-day="{{ day }}"
                                     data-swap-period="{{ p }}"
-                                    data-is-free="{{ 'true' if is_free else 'false' }}">⇄ swap</small>
+                                    data-is-free="{{ 'true' if is_free else 'false' }}"
+                                    data-is-continuation="{{ 'true' if is_continuation else 'false' }}">⇄ swap</small>
                             </td>
                         {% endfor %}
                     </tr>
@@ -393,74 +391,56 @@ function triggerDownload(format, classIdx) {
     setTimeout(() => { overlay.style.display = 'none'; }, 2800);
 }
 
-// ── Swap slots ────────────────────────────────────────────────────────────────
-let swapSource = null;  // { class_idx, day, period, slot_index, subject }
+// ── Swap slots (highlight mode — chess style, lab-block aware) ───────────────
+let swapSource = null;
+let swapActive = false;
 
 function isFreeSlot(val) {
     const s = String(val).toLowerCase().trim();
     return s === 'free' || s === '0' || val === 0 || (s.startsWith('f') && s.length <= 4);
 }
 
-function openSwap(classIdx, day, period) {
-    const si       = day * NUM_PERIODS + period;
-    const subject  = TIMETABLE[si] ? String(TIMETABLE[si][classIdx]) : '';
-    const srcIsFree = isFreeSlot(subject);
-    swapSource     = { classIdx, day, period, si, subject, srcIsFree };
-
-    const srcLabel = srcIsFree ? 'Free Period' : subject;
-    document.getElementById('swapSourceInfo').innerHTML =
-        `Swapping <strong>${srcLabel}</strong> — Class ${CLASS_NAMES[classIdx]}, ${DAY_NAMES[day]||"Day "+(day+1)}, P${period+1}`;
-
-    const candidates = document.getElementById('swapCandidates');
-    candidates.innerHTML = '';
-    let found = 0;
-
-    for (let d2 = 0; d2 < NUM_DAYS; d2++) {
-        for (let p2 = 0; p2 < NUM_PERIODS; p2++) {
-            if (d2 === day && p2 === period) continue;
-            const si2       = d2 * NUM_PERIODS + p2;
-            const subject2  = TIMETABLE[si2] ? String(TIMETABLE[si2][classIdx]) : '';
-            const destIsFree = isFreeSlot(subject2);
-
-            // Don't swap free ↔ free (pointless)
-            if (srcIsFree && destIsFree) continue;
-            // Don't swap same subject with itself
-            if (!srcIsFree && !destIsFree && subject2 === subject) continue;
-
-            // Clash check:
-            // - free ↔ subject: only check the subject's teacher is free at the free slot
-            // - subject ↔ subject: check both teachers
-            const safe = checkSwapSafe(classIdx, si, si2, srcIsFree, destIsFree);
-            if (!safe) continue;
-
-            const btn = document.createElement('button');
-            btn.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
-            const destLabel = destIsFree ? '<em class="text-muted">Free Period</em>' : `<strong>${subject2}</strong>`;
-            btn.innerHTML = `<span>${destLabel}</span>
-                <small class="text-muted">${DAY_NAMES[d2]||"Day "+(d2+1)}, P${p2+1}</small>`;
-            btn.onclick = () => doSwap(classIdx, si, si2);
-            candidates.appendChild(btn);
-            found++;
-        }
-    }
-    if (!found) {
-        candidates.innerHTML = '<div class="text-muted text-center py-3">No safe swap candidates found.</div>';
-    }
-
-    new bootstrap.Modal(document.getElementById('swapModal')).show();
+function isLabSlot(val) {
+    return String(val).toLowerCase().includes('lab');
 }
 
-function checkSwapSafe(classIdx, si1, si2, si1IsFree, si2IsFree) {
-    // Free slots have no teacher — only check the subject slot's teacher
-    if (si1IsFree && si2IsFree) return false;  // free ↔ free never allowed
+// Returns the full slot-index array for the lab block containing si.
+// Walks backward to find the start, then forward to find the end.
+// For non-lab: returns [si].
+function getBlock(classIdx, si) {
+    const val = TIMETABLE[si] ? String(TIMETABLE[si][classIdx]) : '';
+    if (!isLabSlot(val)) return [si];
 
+    const day = Math.floor(si / NUM_PERIODS);
+
+    // Walk backward to find block start
+    let start = si;
+    while (start > day * NUM_PERIODS) {
+        const prevSi  = start - 1;
+        const prevVal = TIMETABLE[prevSi] ? String(TIMETABLE[prevSi][classIdx]) : '';
+        if (prevVal === val) start = prevSi;
+        else break;
+    }
+
+    // Walk forward to find block end
+    const block = [];
+    let cur = start;
+    while (Math.floor(cur / NUM_PERIODS) === day && cur < TIMETABLE.length) {
+        const curVal = TIMETABLE[cur] ? String(TIMETABLE[cur][classIdx]) : '';
+        if (curVal === val) { block.push(cur); cur++; }
+        else break;
+    }
+    return block;
+}
+
+// Check a single-slot pair for teacher clash safety
+function checkSwapSafe(classIdx, si1, si2, si1IsFree, si2IsFree) {
+    if (si1IsFree && si2IsFree) return false;
     let teacher1 = null, teacher2 = null;
     Object.entries(TEACHER_SLOT_MAP).forEach(([tname, slots]) => {
         if (slots.includes(`${classIdx}-${si1}`)) teacher1 = tname;
         if (slots.includes(`${classIdx}-${si2}`)) teacher2 = tname;
     });
-
-    // If si1 is free, only the subject at si2 is moving — check teacher2 is free at si1
     if (si1IsFree) {
         if (teacher2 && TEACHER_SLOTS[teacher2]) {
             for (let c = 0; c < NUM_CLASSES; c++) {
@@ -470,8 +450,6 @@ function checkSwapSafe(classIdx, si1, si2, si1IsFree, si2IsFree) {
         }
         return true;
     }
-
-    // If si2 is free, only the subject at si1 is moving — check teacher1 is free at si2
     if (si2IsFree) {
         if (teacher1 && TEACHER_SLOTS[teacher1]) {
             for (let c = 0; c < NUM_CLASSES; c++) {
@@ -481,8 +459,6 @@ function checkSwapSafe(classIdx, si1, si2, si1IsFree, si2IsFree) {
         }
         return true;
     }
-
-    // Subject ↔ subject: check both teachers across all other classes
     if (teacher1 && TEACHER_SLOTS[teacher1]) {
         for (let c = 0; c < NUM_CLASSES; c++) {
             if (c === classIdx) continue;
@@ -498,40 +474,225 @@ function checkSwapSafe(classIdx, si1, si2, si1IsFree, si2IsFree) {
     return true;
 }
 
-function doSwap(classIdx, si1, si2) {
-    // Swap in the local TIMETABLE copy and re-render
-    const tmp = TIMETABLE[si1][classIdx];
-    TIMETABLE[si1][classIdx] = TIMETABLE[si2][classIdx];
-    TIMETABLE[si2][classIdx] = tmp;
+// Check if a block starting at destSi (size = srcBlock.length) is a valid swap target
+function checkBlockSwapSafe(classIdx, srcBlock, destSi) {
+    const blockSize  = srcBlock.length;
+    const destDay    = Math.floor(destSi / NUM_PERIODS);
+    const destPeriod = destSi % NUM_PERIODS;
 
-    // Update TEACHER_SLOT_MAP
+    // Must not overflow into next day
+    if (destPeriod + blockSize > NUM_PERIODS) return false;
+
+    const destBlock = Array.from({ length: blockSize }, (_, i) => destSi + i);
+
+    // Must not overlap with src block
+    if (destBlock.some(s => srcBlock.includes(s))) return false;
+
+    // All dest slots must be on the same day
+    if (destBlock.some(s => Math.floor(s / NUM_PERIODS) !== destDay)) return false;
+
+    // Dest block must all have the same subject (can't land in a split block)
+    const destVals = destBlock.map(s => TIMETABLE[s] ? String(TIMETABLE[s][classIdx]) : '');
+    if (!destVals.every(v => v === destVals[0])) return false;
+
+    // Collect src block teacher and dest block teacher
+    let srcTeacher  = null;
+    let destTeacher = null;
     Object.entries(TEACHER_SLOT_MAP).forEach(([tname, slots]) => {
-        const i1 = slots.indexOf(`${classIdx}-${si1}`);
-        const i2 = slots.indexOf(`${classIdx}-${si2}`);
-        if (i1 !== -1) { slots[i1] = `${classIdx}-${si2}`; TEACHER_SLOTS[tname].delete(`${classIdx}-${si1}`); TEACHER_SLOTS[tname].add(`${classIdx}-${si2}`); }
-        if (i2 !== -1) { slots[i2] = `${classIdx}-${si1}`; TEACHER_SLOTS[tname].delete(`${classIdx}-${si2}`); TEACHER_SLOTS[tname].add(`${classIdx}-${si1}`); }
+        if (slots.includes(`${classIdx}-${srcBlock[0]}`))  srcTeacher  = tname;
+        if (slots.includes(`${classIdx}-${destBlock[0]}`)) destTeacher = tname;
     });
 
-    bootstrap.Modal.getInstance(document.getElementById('swapModal')).hide();
+    // For every src slot: check dest teacher isn't busy there in other classes
+    if (destTeacher && TEACHER_SLOTS[destTeacher]) {
+        for (const si of srcBlock) {
+            for (let c = 0; c < NUM_CLASSES; c++) {
+                if (c === classIdx) continue;
+                if (TEACHER_SLOTS[destTeacher].has(`${c}-${si}`)) return false;
+            }
+        }
+    }
 
-    // Persist swap to server
-    fetch('/swap-slots', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ class_idx: classIdx, slot1: si1, slot2: si2 })
-    }).catch(() => {});
+    // For every dest slot: check src teacher isn't busy there in other classes
+    if (srcTeacher && TEACHER_SLOTS[srcTeacher]) {
+        for (const si of destBlock) {
+            for (let c = 0; c < NUM_CLASSES; c++) {
+                if (c === classIdx) continue;
+                if (TEACHER_SLOTS[srcTeacher].has(`${c}-${si}`)) return false;
+            }
+        }
+    }
 
-    // Re-render the affected class table
-    reRenderClassTable(classIdx);
+    return true;
 }
 
-function reRenderClassTable(classIdx) {
-    // Reload the page to re-render from updated timetable
-    // (simple and safe — server has already been updated via /swap-slots)
-    location.reload();
+function openSwap(classIdx, day, period) {
+    if (swapActive) cancelSwapMode();
+
+    let si = day * NUM_PERIODS + period;
+
+    // If this is a lab continuation cell, walk back to find the block start
+    const clickedCell = document.getElementById(`cell-${classIdx}-${si}`);
+    if (clickedCell && clickedCell.dataset.isContinuation === 'true') {
+        // Walk back on same day until we find the block start
+        while (si > day * NUM_PERIODS) {
+            const prevSi  = si - 1;
+            const prevVal = TIMETABLE[prevSi] ? String(TIMETABLE[prevSi][classIdx]) : '';
+            const curVal  = TIMETABLE[si]     ? String(TIMETABLE[si][classIdx])     : '';
+            if (prevVal === curVal) { si = prevSi; }
+            else break;
+        }
+        // Recalculate period from corrected si
+        period = si % NUM_PERIODS;
+        day    = Math.floor(si / NUM_PERIODS);
+    }
+
+    const subject   = TIMETABLE[si] ? String(TIMETABLE[si][classIdx]) : '';
+    const srcIsFree = isFreeSlot(subject);
+    const srcBlock  = getBlock(classIdx, si);
+    const blockSize = srcBlock.length;
+
+    swapSource = { classIdx, si, srcIsFree, srcBlock };
+    swapActive = true;
+
+    const srcLabel  = srcIsFree ? 'Free Period' : subject;
+    const blockNote = blockSize > 1 ? ` <span style="color:#92400e;">(${blockSize}-period lab block)</span>` : '';
+    document.getElementById('swapBannerLabel').innerHTML =
+        `<strong>${srcLabel}</strong>${blockNote} — Class ${CLASS_NAMES[classIdx]}, ${DAY_NAMES[day]||'Day '+(day+1)}, P${period+1}`;
+    document.getElementById('swapModeBanner').style.display = 'block';
+
+    // Highlight all cells in the source block yellow
+    srcBlock.forEach(s => {
+        const cell = document.getElementById(`cell-${classIdx}-${s}`);
+        if (cell) cell.classList.add('swap-source-cell');
+    });
+
+    // Find valid destination starts
+    const highlightedStarts = new Set();
+    document.querySelectorAll(`td[data-class-idx="${classIdx}"]`).forEach(td => {
+        const si2 = parseInt(td.dataset.slotIndex);
+        if (srcBlock.includes(si2)) return;
+
+        if (blockSize === 1) {
+            const val2       = TIMETABLE[si2] ? String(TIMETABLE[si2][classIdx]) : '';
+            const destIsFree = isFreeSlot(val2);
+            // Block if destination is a lab that belongs to a multi-period block
+            if (isLabSlot(val2) && getBlock(classIdx, si2).length > 1) {
+                td.classList.add('swap-blocked-cell'); return;
+            }
+            if (srcIsFree && destIsFree) { td.classList.add('swap-blocked-cell'); return; }
+            if (!srcIsFree && !destIsFree && val2 === subject) { td.classList.add('swap-blocked-cell'); return; }
+            const safe = checkSwapSafe(classIdx, si, si2, srcIsFree, isFreeSlot(val2));
+            td.classList.add(safe ? 'swap-candidate-cell' : 'swap-blocked-cell');
+        } else {
+            // Only evaluate from the start of a potential dest block
+            // (skip cells that would already be covered by an earlier highlighted start)
+            const alreadyCovered = [...highlightedStarts].some(start =>
+                si2 > start && si2 < start + blockSize);
+            if (alreadyCovered) { td.classList.add('swap-blocked-cell'); return; }
+
+            if (checkBlockSwapSafe(classIdx, srcBlock, si2)) {
+                for (let i = 0; i < blockSize; i++) {
+                    const destCell = document.getElementById(`cell-${classIdx}-${si2 + i}`);
+                    if (destCell && !srcBlock.includes(si2 + i)) {
+                        destCell.classList.add('swap-candidate-cell');
+                        destCell.dataset.swapDestStart = si2;
+                    }
+                }
+                highlightedStarts.add(si2);
+            } else {
+                td.classList.add('swap-blocked-cell');
+            }
+        }
+    });
 }
 
-// ── Delegated event listeners (replaces inline onclick with Jinja) ──────────
+function cancelSwapMode() {
+    swapActive = false;
+    swapSource = null;
+    document.getElementById('swapModeBanner').style.display = 'none';
+    document.querySelectorAll('.swap-source-cell, .swap-candidate-cell, .swap-blocked-cell')
+        .forEach(el => {
+            el.classList.remove('swap-source-cell', 'swap-candidate-cell', 'swap-blocked-cell');
+            delete el.dataset.swapDestStart;
+        });
+}
+
+function doSwap(classIdx, srcBlock, destBlock) {
+    // 1. Swap each paired slot in TIMETABLE
+    srcBlock.forEach((si1, i) => {
+        const si2 = destBlock[i];
+        const tmp = TIMETABLE[si1][classIdx];
+        TIMETABLE[si1][classIdx] = TIMETABLE[si2][classIdx];
+        TIMETABLE[si2][classIdx] = tmp;
+    });
+
+    // 2. Update TEACHER_SLOT_MAP and TEACHER_SLOTS for all slots
+    srcBlock.forEach((si1, i) => {
+        const si2 = destBlock[i];
+        Object.entries(TEACHER_SLOT_MAP).forEach(([tname, slots]) => {
+            const i1 = slots.indexOf(`${classIdx}-${si1}`);
+            const i2 = slots.indexOf(`${classIdx}-${si2}`);
+            if (i1 !== -1) {
+                slots[i1] = `${classIdx}-${si2}`;
+                TEACHER_SLOTS[tname].delete(`${classIdx}-${si1}`);
+                TEACHER_SLOTS[tname].add(`${classIdx}-${si2}`);
+            }
+            if (i2 !== -1) {
+                slots[i2] = `${classIdx}-${si1}`;
+                TEACHER_SLOTS[tname].delete(`${classIdx}-${si2}`);
+                TEACHER_SLOTS[tname].add(`${classIdx}-${si1}`);
+            }
+        });
+    });
+
+    // 3. Persist each pair to server
+    srcBlock.forEach((si1, i) => {
+        const si2 = destBlock[i];
+        fetch('/swap-slots', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ class_idx: classIdx, slot1: si1, slot2: si2 })
+        }).catch(() => {});
+    });
+
+    // 4. Cancel swap mode
+    cancelSwapMode();
+
+    // 5. Update DOM for all affected slots
+    [...srcBlock, ...destBlock].forEach(si => updateCellDOM(classIdx, si));
+}
+
+function updateCellDOM(classIdx, si) {
+    const cell = document.getElementById(`cell-${classIdx}-${si}`);
+    if (!cell) return;
+
+    const val    = TIMETABLE[si] ? String(TIMETABLE[si][classIdx]) : '';
+    const isFree = isFreeSlot(val);
+    const isLab  = val.toLowerCase().includes('lab');
+
+    cell.querySelector('.slot-label').textContent = isFree ? 'Free' : val;
+    cell.classList.toggle('free-period', isFree);
+    cell.classList.toggle('lab-period',  isLab && !isFree);
+    cell.dataset.isFree = isFree ? 'true' : 'false';
+
+    // Recompute continuation: same day, previous slot has same value
+    const day    = Math.floor(si / NUM_PERIODS);
+    const period = si % NUM_PERIODS;
+    const prevSi = si - 1;
+    const isContinuation = isLab && period > 0 &&
+        Math.floor(prevSi / NUM_PERIODS) === day &&
+        TIMETABLE[prevSi] && String(TIMETABLE[prevSi][classIdx]) === val;
+    cell.dataset.isContinuation = isContinuation ? 'true' : 'false';
+
+    const btn = cell.querySelector('.swap-slot-btn');
+    if (btn) {
+        btn.dataset.isFree         = isFree ? 'true' : 'false';
+        btn.dataset.isContinuation = isContinuation ? 'true' : 'false';
+    }
+}
+
+// ── Delegated event listeners ────────────────────────────────────────────────
 document.addEventListener('click', function(e) {
     // Per-class export buttons
     const expBtn = e.target.closest('.cls-export-btn');
@@ -539,7 +700,29 @@ document.addEventListener('click', function(e) {
         triggerDownload(expBtn.dataset.format, parseInt(expBtn.dataset.classIdx));
         return;
     }
-    // Swap slot links
+
+    // Clicking a candidate cell while in swap mode → execute swap
+    const candidateCell = e.target.closest('.swap-candidate-cell');
+    if (candidateCell && swapActive && swapSource) {
+        const si2        = parseInt(candidateCell.dataset.slotIndex);
+        const { classIdx, srcBlock } = swapSource;
+        const blockSize  = srcBlock.length;
+
+        // Resolve destination block start
+        // For lab blocks, dataset.swapDestStart points to block start
+        const destStart  = candidateCell.dataset.swapDestStart
+            ? parseInt(candidateCell.dataset.swapDestStart)
+            : si2;
+        const destBlock  = Array.from({ length: blockSize }, (_, i) => destStart + i);
+
+        doSwap(classIdx, srcBlock, destBlock);
+        return;
+    }
+
+    // Escape key or clicking outside cancels swap mode
+    // (handled in keydown below)
+
+    // Swap slot links — open swap mode
     const swapBtn = e.target.closest('.swap-slot-btn');
     if (swapBtn) {
         openSwap(
@@ -547,7 +730,18 @@ document.addEventListener('click', function(e) {
             parseInt(swapBtn.dataset.swapDay),
             parseInt(swapBtn.dataset.swapPeriod)
         );
+        return;
     }
+
+    // Clicking anywhere outside a candidate/source while in swap mode cancels it
+    if (swapActive && !e.target.closest('.swap-source-cell') &&
+        !e.target.closest('#swapModeBanner')) {
+        cancelSwapMode();
+    }
+});
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && swapActive) cancelSwapMode();
 });
 
 window.onload = function() {
