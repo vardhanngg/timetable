@@ -2,7 +2,8 @@ import os
 import json
 import csv
 from flask import Flask, render_template, request, redirect, url_for, jsonify
-
+import io
+from flask import send_file
 # Custom modules
 from config import CONFIG
 from solver import generate_timetable, generate_timetable_with_retry
@@ -92,6 +93,291 @@ def generate():
         import traceback
         print(traceback.format_exc())
         return f"<h3>Data Processing Error: {str(e)}</h3>"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  HELPER — resolve one cell value from the timetable
+#  Timetable structure: timetable[slot_index][class_idx]
+#  where slot_index = day * periods_per_day + period
+# ─────────────────────────────────────────────────────────────────────────────
+def _cell_text(timetable, class_idx, day, period, periods_per_day):
+    slot_index = day * periods_per_day + period
+    try:
+        slot_row = timetable[slot_index]
+        # slot_row is either a list [cls0_val, cls1_val, ...] or a dict
+        if isinstance(slot_row, list):
+            raw = slot_row[class_idx]
+        elif isinstance(slot_row, dict):
+            raw = slot_row.get(str(class_idx), slot_row.get(class_idx, ""))
+        else:
+            raw = slot_row
+    except (IndexError, KeyError, TypeError):
+        return "", "normal"
+
+    if raw is None or raw == 0 or raw == "0":
+        return "", "normal"
+
+    text = str(raw).strip()
+    lower = text.lower()
+
+    if lower in ("free", "f") or (lower.startswith("f") and len(text) < 4):
+        return "Free", "free"
+    if "lab" in lower:
+        return text, "lab"
+    return text, "normal"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  EXCEL DOWNLOAD
+# ─────────────────────────────────────────────────────────────────────────────
+@app.route("/download/excel")
+def download_excel():
+    import openpyxl
+    from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+
+    if not os.path.exists("generated_timetable.json") or \
+       not os.path.exists("generated_metadata.json") or \
+       not os.path.exists("temp_web_data.json"):
+        return "No timetable found. Please generate one first.", 404
+
+    with open("generated_timetable.json")  as f: timetable   = json.load(f)
+    with open("generated_metadata.json")   as f: meta        = json.load(f)
+    with open("temp_web_data.json")        as f: stored      = json.load(f)
+
+    days        = meta["days"]
+    periods     = meta["periods"]
+    num_classes = meta["num_classes"]                          # authoritative count
+
+    # Build class_names list — pad with "Class N" if organized has fewer entries
+    organized_keys = list(stored.get("organized", {}).keys())
+    class_names = []
+    for i in range(num_classes):
+        class_names.append(organized_keys[i] if i < len(organized_keys) else str(i + 1))
+
+    # Day labels: Mon–Sat for 6, Mon–Fri for 5, etc.
+    _day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    day_labels = [_day_names[i] if i < len(_day_names) else f"Day {i+1}" for i in range(days)]
+
+    # ── Style factories (new object per cell avoids openpyxl shared-style bugs) ─
+    def hdr_fill():  return PatternFill("solid", fgColor="1F3864")
+    def hdr_font():  return Font(color="FFFFFF", bold=True, size=11)
+    def per_fill():  return PatternFill("solid", fgColor="D9E1F2")
+    def per_font():  return Font(bold=True, size=10)
+    def free_fill(): return PatternFill("solid", fgColor="FFF9C4")
+    def lab_fill():  return PatternFill("solid", fgColor="E7F5FF")
+    def norm_fill(): return PatternFill("solid", fgColor="FFFFFF")
+    def mk_border(): return Border(
+        left=Side(style="thin"), right=Side(style="thin"),
+        top=Side(style="thin"),  bottom=Side(style="thin"))
+    def mk_center(): return Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+
+    for cls_idx, cls_name in enumerate(class_names):
+        ws = wb.create_sheet(title=f"Class {cls_name}"[:31])
+
+        # Header row: Day | P1 | P2 | P3 | ...
+        ws.row_dimensions[1].height = 26
+        ws.column_dimensions["A"].width = 14
+
+        for col, label in enumerate(["Day"] + [f"P{p+1}" for p in range(periods)]):
+            c = ws.cell(row=1, column=col+1, value=label)
+            c.fill      = hdr_fill()
+            c.font      = hdr_font()
+            c.alignment = mk_center()
+            c.border    = mk_border()
+
+        col_letters = list("BCDEFGHIJKLMNOPQRSTUVWXYZ")
+        for p in range(periods):
+            if p < len(col_letters):
+                ws.column_dimensions[col_letters[p]].width = 24
+
+        # Data rows — one row per day
+        for d in range(days):
+            row_num = d + 2
+            ws.row_dimensions[row_num].height = 42
+
+            # Day label cell
+            dc = ws.cell(row=row_num, column=1, value=day_labels[d])
+            dc.fill      = per_fill()
+            dc.font      = per_font()
+            dc.alignment = mk_center()
+            dc.border    = mk_border()
+
+            for p in range(periods):
+                text, kind = _cell_text(timetable, cls_idx, d, p, periods)
+
+                fill = {"free": free_fill(), "lab": lab_fill()}.get(kind, norm_fill())
+
+                pc = ws.cell(row=row_num, column=p+2, value=text)
+                pc.fill      = fill
+                pc.alignment = mk_center()
+                pc.border    = mk_border()
+                pc.font      = Font(size=9, bold=(kind == "lab"),
+                                    italic=(kind == "free"),
+                                    color="6C757D" if kind == "free" else "000000")
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name="timetable.xlsx"
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  PDF DOWNLOAD
+# ─────────────────────────────────────────────────────────────────────────────
+@app.route("/download/pdf")
+def download_pdf():
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle,
+                                    Paragraph, Spacer)
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER
+
+    if not os.path.exists("generated_timetable.json") or \
+       not os.path.exists("generated_metadata.json") or \
+       not os.path.exists("temp_web_data.json"):
+        return "No timetable found. Please generate one first.", 404
+
+    with open("generated_timetable.json")  as f: timetable   = json.load(f)
+    with open("generated_metadata.json")   as f: meta        = json.load(f)
+    with open("temp_web_data.json")        as f: stored      = json.load(f)
+
+    days        = meta["days"]
+    periods     = meta["periods"]
+    num_classes = meta["num_classes"]
+
+    organized_keys = list(stored.get("organized", {}).keys())
+    class_names = []
+    for i in range(num_classes):
+        class_names.append(organized_keys[i] if i < len(organized_keys) else str(i + 1))
+
+    # Day labels: Mon–Sat for 6, Mon–Fri for 5, etc.
+    _day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    day_labels = [_day_names[i] if i < len(_day_names) else f"Day {i+1}" for i in range(days)]
+
+    output = io.BytesIO()
+    doc = SimpleDocTemplate(
+        output,
+        pagesize=landscape(A4),
+        leftMargin=1.5*cm, rightMargin=1.5*cm,
+        topMargin=1.5*cm,  bottomMargin=1.5*cm
+    )
+
+    styles  = getSampleStyleSheet()
+    title_s = ParagraphStyle("ttl", parent=styles["Heading2"],
+                             alignment=TA_CENTER, spaceAfter=6)
+    cell_s  = ParagraphStyle("cel", parent=styles["Normal"],
+                             fontSize=7, leading=9, alignment=TA_CENTER)
+    free_s  = ParagraphStyle("fre", parent=styles["Normal"],
+                             fontSize=7, leading=9, alignment=TA_CENTER,
+                             textColor=colors.HexColor("#6C757D"))
+
+    NAVY  = colors.HexColor("#1F3864")
+    LBLUE = colors.HexColor("#D9E1F2")
+    YFREE = colors.HexColor("#FFF9C4")
+    BLAB  = colors.HexColor("#E7F5FF")
+    WHITE = colors.white
+
+
+    story = []
+    for cls_idx, cls_name in enumerate(class_names):
+        story.append(Paragraph(f"Class {cls_name} — Timetable", title_s))
+
+        # Build table rows: header + one row per day
+        header = ["Day"] + [f"P{p+1}" for p in range(periods)]
+        rows   = [header]
+
+        # Track which (row, col) cells need colour overrides
+        free_cells = []
+        lab_cells  = []
+
+        for d in range(days):
+            row = [Paragraph(day_labels[d], cell_s)]
+            for p in range(periods):
+                text, kind = _cell_text(timetable, cls_idx, d, p, periods)
+                style = free_s if kind == "free" else cell_s
+                row.append(Paragraph(text, style))
+                if kind == "free":
+                    free_cells.append((p+1, d+1))   # col, row
+                elif kind == "lab":
+                    lab_cells.append((p+1, d+1))
+            rows.append(row)
+
+        col_w = (27 * cm) / (periods + 1)
+        t = Table(rows, colWidths=[col_w] * (periods + 1), repeatRows=1)
+
+        ts = TableStyle([
+            # Header row
+            ("BACKGROUND", (0, 0), (-1, 0),  NAVY),
+            ("TEXTCOLOR",  (0, 0), (-1, 0),  WHITE),
+            ("FONTNAME",   (0, 0), (-1, 0),  "Helvetica-Bold"),
+            ("FONTSIZE",   (0, 0), (-1, 0),  9),
+            # Day column
+            ("BACKGROUND", (0, 1), (0, -1),  LBLUE),
+            ("FONTNAME",   (0, 1), (0, -1),  "Helvetica-Bold"),
+            # All cells
+            ("ALIGN",      (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
+            ("FONTSIZE",   (1, 1), (-1, -1), 8),
+            ("ROWHEIGHT",  (0, 1), (-1, -1), 28),
+            ("GRID",       (0, 0), (-1, -1), 0.5, colors.grey),
+        ])
+
+        # Apply per-cell colour overrides
+        for (col_i, row_i) in free_cells:
+            ts.add("BACKGROUND", (col_i, row_i), (col_i, row_i), YFREE)
+        for (col_i, row_i) in lab_cells:
+            ts.add("BACKGROUND", (col_i, row_i), (col_i, row_i), BLAB)
+
+        t.setStyle(ts)
+        story.append(t)
+        story.append(Spacer(1, 0.8 * cm))
+
+    doc.build(story)
+    output.seek(0)
+    return send_file(
+        output,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name="timetable.pdf"
+    )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # CLEANED: Only one version of success_summary using dynamic metadata
 @app.route("/success-summary")

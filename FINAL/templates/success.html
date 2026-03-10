@@ -3,60 +3,184 @@
 <head>
     <title>Timetable Generated</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <style>
         .slot { font-size: 0.85rem; min-height: 60px; vertical-align: middle !important; min-width: 120px; }
         .day-header { background-color: #f8f9fa; font-weight: bold; width: 100px; }
         .free-period { color: #adb5bd; font-style: italic; background-color: #fafafa; }
         .lab-period { background-color: #e7f5ff; border-left: 4px solid #007bff; font-weight: bold; }
         .table-container { margin-bottom: 50px; }
+
+        /* ── Export modal cards ── */
+        .export-card {
+            border: 2px solid #e2e8f0;
+            border-radius: 14px;
+            padding: 28px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all .2s;
+            background: #fff;
+        }
+        .export-card:hover {
+            border-color: #0d6efd;
+            box-shadow: 0 4px 20px rgba(13,110,253,0.13);
+            transform: translateY(-3px);
+        }
+        .export-card.excel:hover {
+            border-color: #16a34a;
+            box-shadow: 0 4px 20px rgba(22,163,74,0.13);
+        }
+        .export-card .icon { font-size: 2.6rem; margin-bottom: 10px; }
+        .export-card h5 { font-weight: 700; margin-bottom: 4px; }
+        .export-card p { font-size: 0.82rem; color: #64748b; margin: 0; }
+        .badge-fmt {
+            font-size: 0.7rem;
+            padding: 3px 9px;
+            border-radius: 20px;
+            font-weight: 600;
+            display: inline-block;
+            margin-top: 10px;
+        }
+
+        /* ── Loading spinner overlay ── */
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(255,255,255,.78);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
     </style>
 </head>
 <body class="bg-light p-4">
-    <div class="container bg-white p-5 shadow rounded">
-        <div class="text-center mb-5">
-            <h1 class="display-5 text-success">📅 Timetable Ready!</h1>
-            <p class="lead">The solver successfully mapped your subjects into a conflict-free schedule.</p>
-        </div>
 
-        {% for class_idx in range(num_classes) %}
-        <div class="table-container">
-            <h3 class="border-bottom pb-2">Class: {{ class_names[class_idx] }}</h3>
-            <table class="table table-bordered text-center shadow-sm">
-                <thead class="table-dark">
-                    <tr>
-                        <th>Day</th>
-                        {% for p in range(periods_per_day) %}
-                        <th>P{{ p + 1 }}</th>
-                        {% endfor %}
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for day in range(num_days) %}
-                    <tr>
-                        <td class="day-header">Day {{ day + 1 }}</td>
-                        {% for p in range(periods_per_day) %}
-                            {% set slot_index = (day * periods_per_day) + p %}
-                            {% set slot_data = timetable[slot_index][class_idx] %}
-                            
-                            {# Logical Checks #}
-                            {% set is_free = 'f' in slot_data|lower and slot_data|length < 4 %}
-                            {% set is_lab = 'Lab' in slot_data|string %}
-                            
-                            <td class="slot {{ 'free-period' if is_free }} {{ 'lab-period' if is_lab }}">
-                                {{ "Free" if is_free else slot_data }}
-                            </td>
-                        {% endfor %}
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% endfor %}
+<!-- ── Loading overlay ── -->
+<div id="loadingOverlay" class="loading-overlay">
+    <div class="spinner-border text-primary" style="width:3rem;height:3rem;" role="status"></div>
+    <p class="mt-3 fw-semibold text-secondary fs-5" id="overlayMsg">Preparing your file…</p>
+</div>
 
-        <div class="text-center mt-4">
-            <button onclick="window.print()" class="btn btn-primary btn-lg px-5">🖨️ Print Timetables</button>
-            <a href="/" class="btn btn-outline-secondary btn-lg ms-2">Upload New PDF</a>
+<!-- ── Export Modal ── -->
+<div class="modal fade" id="exportModal" tabindex="-1" aria-labelledby="exportModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            <div class="modal-header border-0 pb-0 bg-light">
+                <h5 class="modal-title fw-bold" id="exportModalLabel">
+                    <i class="bi bi-box-arrow-down me-2 text-primary"></i>Export Timetable
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body px-4 pb-2 bg-light">
+                <p class="text-muted text-center mb-4" style="font-size:.88rem;">
+                    All classes are included in a single file.
+                </p>
+                <div class="row g-3">
+                    <div class="col-6">
+                        <div class="export-card excel" onclick="triggerDownload('excel')">
+                            <div class="icon">📊</div>
+                            <h5>Excel</h5>
+                            <p>One sheet per class, colour-coded, editable</p>
+                            <span class="badge-fmt" style="background:#dcfce7;color:#16a34a;">.XLSX</span>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="export-card" onclick="triggerDownload('pdf')">
+                            <div class="icon">📄</div>
+                            <h5>PDF</h5>
+                            <p>Print-ready landscape layout, one page per class</p>
+                            <span class="badge-fmt" style="background:#dbeafe;color:#1d4ed8;">.PDF</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer border-0 bg-light pt-2">
+                <button class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+            </div>
         </div>
     </div>
+</div>
+
+<!-- ── Main content (your original layout, unchanged) ── -->
+<div class="container bg-white p-5 shadow rounded">
+    <div class="text-center mb-5">
+        <h1 class="display-5 text-success">📅 Timetable Ready!</h1>
+        <p class="lead">The solver successfully mapped your subjects into a conflict-free schedule.</p>
+    </div>
+
+    {% for class_idx in range(num_classes) %}
+    <div class="table-container">
+        <h3 class="border-bottom pb-2">Class: {{ class_names[class_idx] }}</h3>
+        <table class="table table-bordered text-center shadow-sm">
+            {% set day_names = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"] %}
+            <thead class="table-dark">
+                <tr>
+                    <th>Day</th>
+                    {% for p in range(periods_per_day) %}
+                    <th>P{{ p + 1 }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for day in range(num_days) %}
+                <tr>
+                    <td class="day-header">{{ day_names[day] if day < day_names|length else "Day " ~ (day + 1) }}</td>
+                    {% for p in range(periods_per_day) %}
+                        {% set slot_index = (day * periods_per_day) + p %}
+                        {% set slot_data = timetable[slot_index][class_idx] %}
+
+                        {# Logical Checks — your original logic, untouched #}
+                        {% set is_free = 'f' in slot_data|lower and slot_data|length < 4 %}
+                        {% set is_lab = 'Lab' in slot_data|string %}
+
+                        <td class="slot {{ 'free-period' if is_free }} {{ 'lab-period' if is_lab }}">
+                            {{ "Free" if is_free else slot_data }}
+                        </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endfor %}
+
+    <!-- ── Action buttons ── -->
+    <div class="text-center mt-4">
+        <button onclick="window.print()" class="btn btn-outline-primary btn-lg px-4">
+            🖨️ Print Timetables
+        </button>
+        <button class="btn btn-success btn-lg px-4 ms-2"
+                data-bs-toggle="modal" data-bs-target="#exportModal">
+            <i class="bi bi-download me-1"></i> Download
+        </button>
+        <a href="/" class="btn btn-outline-secondary btn-lg ms-2">Upload New PDF</a>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+function triggerDownload(format) {
+    const modal   = bootstrap.Modal.getInstance(document.getElementById('exportModal'));
+    const overlay = document.getElementById('loadingOverlay');
+    const msg     = document.getElementById('overlayMsg');
+
+    modal.hide();
+    msg.textContent = format === 'excel' ? 'Generating Excel file…' : 'Generating PDF…';
+    overlay.style.display = 'flex';
+
+    // Invisible anchor triggers the Flask download route
+    const a = document.createElement('a');
+    a.href = `/download/${format}`;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    // Hide spinner once download has started
+    setTimeout(() => { overlay.style.display = 'none'; }, 2800);
+}
+</script>
 </body>
 </html>

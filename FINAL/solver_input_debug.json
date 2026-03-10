@@ -1,7 +1,7 @@
 {
     "No_of_classes": 5,
     "days": 6,
-    "periods": 6,
+    "periods": 5,
     "teacher_list": {
         "8": {
             "Name": "S6",
@@ -74,14 +74,14 @@
     },
     "class_theory_workload": {
         "0": {
-            "8": 0,
+            "8": 3,
             "9": 3,
             "4": 4,
             "7": 4,
             "10": 2,
             "11": 3,
             "5": 0,
-            "1000": 8
+            "1000": 3
         },
         "1": {
             "8": 3,
@@ -90,7 +90,7 @@
             "7": 4,
             "9": 2,
             "1": 0,
-            "1001": 13
+            "1001": 7
         },
         "2": {
             "6": 4,
@@ -99,7 +99,7 @@
             "5": 5,
             "9": 2,
             "2": 0,
-            "1002": 7
+            "1002": 1
         },
         "3": {
             "3": 4,
@@ -108,14 +108,14 @@
             "1": 2,
             "0": 4,
             "10": 2,
-            "1003": 16
+            "1003": 10
         },
         "4": {
             "7": 5,
             "5": 5,
             "4": 5,
             "0": 5,
-            "1004": 16
+            "1004": 10
         }
     },
     "lab_periods": {
@@ -151,7 +151,7 @@
             "8": [
                 {
                     "name": "General English",
-                    "hours": 0,
+                    "hours": 3,
                     "type": "theory"
                 }
             ],
@@ -205,7 +205,7 @@
             "1000": [
                 {
                     "name": "Free",
-                    "hours": 8,
+                    "hours": 3,
                     "type": "theory"
                 }
             ]
@@ -261,7 +261,7 @@
             "1001": [
                 {
                     "name": "Free",
-                    "hours": 13,
+                    "hours": 7,
                     "type": "theory"
                 }
             ]
@@ -317,7 +317,7 @@
             "1002": [
                 {
                     "name": "Free",
-                    "hours": 7,
+                    "hours": 1,
                     "type": "theory"
                 }
             ]
@@ -368,7 +368,7 @@
             "1003": [
                 {
                     "name": "Free",
-                    "hours": 16,
+                    "hours": 10,
                     "type": "theory"
                 }
             ]
@@ -405,38 +405,13 @@
             "1004": [
                 {
                     "name": "Free",
-                    "hours": 16,
+                    "hours": 10,
                     "type": "theory"
                 }
             ]
         }
     },
     "fixed_periods": {
-        "0": {
-            "0-0": {
-                "label": "General English",
-                "teacher_id": "8",
-                "is_free": false,
-                "is_event": false
-            },
-            "1-0": {
-                "label": "General English",
-                "teacher_id": "8",
-                "is_free": false,
-                "is_event": false
-            },
-            "2-0": {
-                "label": "General English",
-                "teacher_id": "8",
-                "is_free": false,
-                "is_event": false
-            },
-            "3-0": {
-                "label": "Free",
-                "teacher_id": "__free__",
-                "is_free": true,
-                "is_event": false
-            }
-        }
+        "0": {}
     }
 }

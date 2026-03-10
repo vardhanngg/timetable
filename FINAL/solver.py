@@ -1,11 +1,8 @@
+
 import random
 import copy
-import csv
 import logging
 import os
-import sys
-
-sys.setrecursionlimit(50000)
 
 log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'solver_debug.log')
 logging.basicConfig(
@@ -15,50 +12,46 @@ logging.basicConfig(
     filemode='w'
 )
 
-def generate_timetable(
-    No_of_classes,
-    No_of_days_in_week,
-    No_of_periods,
-    teacher_list,
-    class_teacher_periods,
-    lab_teacher_periods,
-    subject_map,
-    fixed_periods=None
+try:
+    from ortools.sat.python import cp_model
+    ORTOOLS_AVAILABLE = True
+    logging.info("OR-Tools loaded successfully")
+except ImportError:
+    ORTOOLS_AVAILABLE = False
+    logging.warning("OR-Tools not installed. Falling back to backtracking solver.")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  OR-TOOLS CP-SAT SOLVER
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def generate_timetable_ortools(
+    No_of_classes, No_of_days_in_week, No_of_periods,
+    teacher_list, class_teacher_periods, lab_teacher_periods,
+    subject_map, fixed_periods=None, time_limit_seconds=60
 ):
-    # ── BASIC CONFIG ──────────────────────────────────────────────────────────
-    total_periods = No_of_days_in_week * No_of_periods
+    total_slots = No_of_days_in_week * No_of_periods
+    model = cp_model.CpModel()
 
-    max_t_id     = max(teacher_list.keys()) if teacher_list else 0
-    No_of_teachers = max_t_id + 1
+    # ── STEP 1: Pre-fill fixed slots ─────────────────────────────────────────
+    Timetable = [[0] * No_of_classes for _ in range(total_slots)]
+    fixed_set = set()
+    teacher_busy = {tid: set() for tid in teacher_list}
 
-    # ── TIMETABLE MATRIX ──────────────────────────────────────────────────────
-    Timetable = [[0 for _ in range(No_of_classes)] for _ in range(total_periods)]
-
-    # ── TEACHER AVAILABILITY (per-slot copy) ──────────────────────────────────
-    main_teacher_list = [copy.deepcopy(teacher_list) for _ in range(total_periods)]
-
-    # ── PRE-FILL FIXED SLOTS ──────────────────────────────────────────────────
-    # adapter.py already deducted hours from subject_map / class_teacher_periods.
-    # Here we ONLY stamp the timetable and mark teachers unavailable.
-    # We do NOT reduce hours again — that would cause double-deduction.
     if fixed_periods:
         for cls_idx_str, slots in fixed_periods.items():
             try:
                 cls_idx = int(cls_idx_str)
             except ValueError:
                 continue
-
             for slot_str, info in slots.items():
                 label    = (info.get('label') or '').strip()
                 t_id_raw = info.get('teacher_id', '')
                 is_free  = info.get('is_free', False) or str(t_id_raw) == '__free__'
                 is_event = info.get('is_event', False) or str(t_id_raw) == '__event__'
 
-                # Skip un-set slots
                 if not label or str(t_id_raw) == '__none__':
                     continue
-
-                # Parse flat slot index
                 try:
                     if '-' in slot_str:
                         d, p = map(int, slot_str.split('-'))
@@ -66,20 +59,214 @@ def generate_timetable(
                     else:
                         flat_slot = int(slot_str)
                 except Exception:
-                    logging.warning(f"Bad slot key '{slot_str}' — skipping")
+                    continue
+                if flat_slot < 0 or flat_slot >= total_slots:
                     continue
 
-                if flat_slot < 0 or flat_slot >= total_periods:
-                    logging.warning(f"Slot {flat_slot} out of range — skipping")
-                    continue
-
-                # Stamp timetable
                 Timetable[flat_slot][cls_idx] = label
-                logging.debug(f"Pre-filled Class {cls_idx} slot {flat_slot} = '{label}'")
+                fixed_set.add((flat_slot, cls_idx))
 
-                # Mark teacher unavailable
+                if not is_event and not is_free and str(t_id_raw).lstrip('-').isdigit():
+                    t_id = int(t_id_raw)
+                    if t_id in teacher_busy:
+                        if flat_slot in teacher_busy[t_id]:
+                            logging.error(f"Fixed slot collision: Teacher {t_id} slot {flat_slot}")
+                            return None
+                        teacher_busy[t_id].add(flat_slot)
+                elif is_free:
+                    f_id = 1000 + cls_idx
+                    teacher_busy.setdefault(f_id, set()).add(flat_slot)
+
+    # ── STEP 2: Place labs greedily (consecutive blocks) ─────────────────────
+    labs = {}
+    lab_used_by_class_per_day = {idx: {} for idx in range(No_of_classes)}
+
+    for class_idx, teacher_periods in lab_teacher_periods.items():
+        for teacher_id, (total_sessions, consecutive_periods, lab_number) in teacher_periods.items():
+            labs.setdefault(lab_number, [])
+            available_slots = [
+                s for s in range(total_slots)
+                if Timetable[s][class_idx] == 0
+                and s not in teacher_busy.get(teacher_id, set())
+            ]
+            random.shuffle(available_slots)
+            sessions_assigned = 0
+            for slot in available_slots:
+                if slot + consecutive_periods > total_slots:
+                    continue
+                can_assign = True
+                for i in range(consecutive_periods):
+                    day = (slot + i) // No_of_periods
+                    if (Timetable[slot + i][class_idx] != 0 or
+                            (slot + i) in teacher_busy.get(teacher_id, set()) or
+                            (slot // No_of_periods) != day or
+                            (slot + i) in labs[lab_number] or
+                            lab_number in lab_used_by_class_per_day[class_idx].get(day, set())):
+                        can_assign = False
+                        break
+                if can_assign:
+                    subject_name = "Lab"
+                    if class_idx in subject_map and teacher_id in subject_map[class_idx]:
+                        for sub in subject_map[class_idx][teacher_id]:
+                            if sub["type"] == "lab":
+                                subject_name = sub["name"]
+                                break
+                    for i in range(consecutive_periods):
+                        s = slot + i
+                        Timetable[s][class_idx] = f"{subject_name} (Lab {lab_number})"
+                        fixed_set.add((s, class_idx))
+                        teacher_busy.setdefault(teacher_id, set()).add(s)
+                        labs[lab_number].append(s)
+                        day = s // No_of_periods
+                        lab_used_by_class_per_day[class_idx].setdefault(day, set()).add(lab_number)
+                    sessions_assigned += consecutive_periods
+                if sessions_assigned >= total_sessions:
+                    break
+
+    # ── STEP 3: Build subject entries per class ───────────────────────────────
+    # class_entries[cidx] = list of {teacher_id, name, type, hours}
+    class_entries = {}
+    for cidx in range(No_of_classes):
+        class_entries[cidx] = []
+        if cidx in subject_map:
+            for tid, subs in subject_map[cidx].items():
+                for sub in subs:
+                    if sub["type"] == "theory" and sub["hours"] > 0:
+                        class_entries[cidx].append({
+                            "teacher_id": tid,
+                            "name": sub["name"],
+                            "hours": sub["hours"]
+                        })
+
+    # ── STEP 4: Create boolean decision variables ─────────────────────────────
+    # assign_vars[cidx][slot] = list of (entry_idx, BoolVar)
+    assign_vars = {}
+    for cidx in range(No_of_classes):
+        assign_vars[cidx] = {}
+        for slot in range(total_slots):
+            if (slot, cidx) in fixed_set:
+                continue
+            slot_vars = []
+            for eidx, entry in enumerate(class_entries[cidx]):
+                v = model.NewBoolVar(f"c{cidx}_s{slot}_e{eidx}")
+                slot_vars.append((eidx, v))
+            assign_vars[cidx][slot] = slot_vars
+            # Exactly one subject per empty slot
+            if slot_vars:
+                model.AddExactlyOne([v for _, v in slot_vars])
+
+    # ── STEP 5: Hour budget — each subject assigned exactly its hours ─────────
+    for cidx in range(No_of_classes):
+        for eidx, entry in enumerate(class_entries[cidx]):
+            vars_for_entry = [
+                v for slot, slot_vars in assign_vars[cidx].items()
+                for ei, v in slot_vars if ei == eidx
+            ]
+            if vars_for_entry:
+                model.Add(sum(vars_for_entry) == entry["hours"])
+
+    # ── STEP 6: Teacher conflict — one class per teacher per slot ─────────────
+    slot_teacher_vars = {}
+    for cidx in range(No_of_classes):
+        for slot, slot_vars in assign_vars[cidx].items():
+            for eidx, v in slot_vars:
+                tid = class_entries[cidx][eidx]["teacher_id"]
+                slot_teacher_vars.setdefault((slot, tid), []).append(v)
+
+    # Block vars for teachers already busy at a slot (from fixed/labs)
+    for tid, busy_slots in teacher_busy.items():
+        for slot in busy_slots:
+            for v in slot_teacher_vars.get((slot, tid), []):
+                model.Add(v == 0)
+
+    # At most one class per teacher per slot
+    for (slot, tid), var_list in slot_teacher_vars.items():
+        if len(var_list) > 1:
+            model.AddAtMostOne(var_list)
+
+    # ── STEP 7: No repeat subject on same day ─────────────────────────────────
+    for cidx in range(No_of_classes):
+        for eidx, entry in enumerate(class_entries[cidx]):
+            if entry["name"] == "Free":
+                continue
+            for day in range(No_of_days_in_week):
+                day_vars = [
+                    v for p in range(No_of_periods)
+                    for slot in [day * No_of_periods + p]
+                    if slot in assign_vars[cidx]
+                    for ei, v in assign_vars[cidx][slot] if ei == eidx
+                ]
+                if day_vars:
+                    model.Add(sum(day_vars) <= 1)
+
+    # ── STEP 8: Solve ─────────────────────────────────────────────────────────
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = time_limit_seconds
+    solver.parameters.num_search_workers  = 8
+    solver.parameters.log_search_progress = False
+
+    logging.info(f"CP-SAT solving: {No_of_classes} classes, {total_slots} slots, {time_limit_seconds}s limit")
+    status = solver.Solve(model)
+
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        logging.error(f"CP-SAT failed: {solver.StatusName(status)}")
+        return None
+
+    logging.info(f"CP-SAT done: {solver.StatusName(status)} in {solver.WallTime():.2f}s")
+
+    # ── STEP 9: Extract into Timetable matrix ─────────────────────────────────
+    for cidx in range(No_of_classes):
+        for slot, slot_vars in assign_vars[cidx].items():
+            for eidx, v in slot_vars:
+                if solver.Value(v) == 1:
+                    Timetable[slot][cidx] = class_entries[cidx][eidx]["name"]
+                    break
+
+    return Timetable
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  BACKTRACKING SOLVER (fallback)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+import sys
+sys.setrecursionlimit(50000)
+
+def generate_timetable_backtrack(
+    No_of_classes, No_of_days_in_week, No_of_periods,
+    teacher_list, class_teacher_periods, lab_teacher_periods,
+    subject_map, fixed_periods=None
+):
+    total_periods = No_of_days_in_week * No_of_periods
+    Timetable = [[0] * No_of_classes for _ in range(total_periods)]
+    main_teacher_list = [copy.deepcopy(teacher_list) for _ in range(total_periods)]
+
+    if fixed_periods:
+        for cls_idx_str, slots in fixed_periods.items():
+            try:
+                cls_idx = int(cls_idx_str)
+            except ValueError:
+                continue
+            for slot_str, info in slots.items():
+                label    = (info.get('label') or '').strip()
+                t_id_raw = info.get('teacher_id', '')
+                is_free  = info.get('is_free', False) or str(t_id_raw) == '__free__'
+                is_event = info.get('is_event', False) or str(t_id_raw) == '__event__'
+                if not label or str(t_id_raw) == '__none__':
+                    continue
+                try:
+                    if '-' in slot_str:
+                        d, p = map(int, slot_str.split('-'))
+                        flat_slot = d * No_of_periods + p
+                    else:
+                        flat_slot = int(slot_str)
+                except Exception:
+                    continue
+                if flat_slot < 0 or flat_slot >= total_periods:
+                    continue
+                Timetable[flat_slot][cls_idx] = label
                 if is_event:
-                    pass  # No teacher linked — nobody's availability changes
+                    pass
                 elif is_free:
                     f_id = 1000 + cls_idx
                     if f_id in main_teacher_list[flat_slot]:
@@ -88,14 +275,9 @@ def generate_timetable(
                     t_id = int(t_id_raw)
                     if t_id in main_teacher_list[flat_slot]:
                         if not main_teacher_list[flat_slot][t_id]["available"]:
-                            logging.error(
-                                f"COLLISION: Teacher {t_id} already busy at slot {flat_slot} "
-                                f"(Class {cls_idx})"
-                            )
                             return None
                         main_teacher_list[flat_slot][t_id]["available"] = False
 
-    # ── CREDIT MATRIX (remaining workload after fixed deductions) ────────────
     class_to_teacher = []
     for class_idx in range(No_of_classes):
         credits = {}
@@ -108,7 +290,6 @@ def generate_timetable(
         credits['__ids__'] = active_teacher_ids
         class_to_teacher.append(credits)
 
-    # ── LAB HELPERS ───────────────────────────────────────────────────────────
     labs = {}
     lab_used_by_class_per_day = {idx: {} for idx in range(No_of_classes)}
 
@@ -156,10 +337,7 @@ def generate_timetable(
                     if sessions_assigned >= total_sessions:
                         break
 
-    # ── SOLVER CORE ───────────────────────────────────────────────────────────
     def find_empty():
-        # MRV heuristic: return the empty cell with fewest available teachers.
-        # Cells with 0 options are returned immediately to force a fast backtrack.
         best_cell = (-1, -1)
         min_count = float("inf")
         rows = list(range(total_periods))
@@ -176,15 +354,12 @@ def generate_timetable(
                         min_count = count
                         best_cell = (x, y)
                         if count == 0:
-                            return best_cell  # can't do better, backtrack immediately
+                            return best_cell
         return best_cell
 
     def subject_already_on_day(class_idx, slot, subject_name):
-        """Return True if subject_name already appears on the same day for class_idx."""
         day = slot // No_of_periods
-        day_start = day * No_of_periods
-        day_end   = day_start + No_of_periods
-        for s in range(day_start, day_end):
+        for s in range(day * No_of_periods, day * No_of_periods + No_of_periods):
             if Timetable[s][class_idx] == subject_name:
                 return True
         return False
@@ -193,17 +368,11 @@ def generate_timetable(
         x, y = find_empty()
         if x == -1:
             return True
-
-        if depth % 50 == 0:
-            logging.debug(f"Solving Slot {x}, Class {y}. Depth: {depth}")
-
         priority = class_to_teacher[y]['__ids__'][:]
         random.shuffle(priority)
-
         for i in priority:
             if class_to_teacher[y].get(i, 0) > 0 and main_teacher_list[x][i]["available"]:
                 t_name = teacher_list[i]["Name"]
-
                 assigned_name = t_name
                 sub_ptr = None
                 if y in subject_map and i in subject_map[y]:
@@ -212,26 +381,20 @@ def generate_timetable(
                             assigned_name = sub["name"]
                             sub_ptr = sub
                             break
-
                 if assigned_name != "Free" and subject_already_on_day(y, x, assigned_name):
                     continue
-
                 class_to_teacher[y][i] -= 1
                 main_teacher_list[x][i]["available"] = False
                 if sub_ptr:
                     sub_ptr["hours"] -= 1
                 Timetable[x][y] = assigned_name
-
                 if solve(depth + 1):
                     return True
-
-                logging.warning(f"Backtracking Slot {x}, Class {y}, Teacher {t_name}")
                 Timetable[x][y] = 0
                 class_to_teacher[y][i] += 1
                 main_teacher_list[x][i]["available"] = True
                 if sub_ptr:
                     sub_ptr["hours"] += 1
-
         return False
 
     assign_lab_periods_randomly()
@@ -240,27 +403,57 @@ def generate_timetable(
     return None
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+#  PUBLIC API
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def generate_timetable(
+    No_of_classes, No_of_days_in_week, No_of_periods,
+    teacher_list, class_teacher_periods, lab_teacher_periods,
+    subject_map, fixed_periods=None
+):
+    if ORTOOLS_AVAILABLE:
+        return generate_timetable_ortools(
+            No_of_classes, No_of_days_in_week, No_of_periods,
+            teacher_list, class_teacher_periods, lab_teacher_periods,
+            subject_map, fixed_periods
+        )
+    return generate_timetable_backtrack(
+        No_of_classes, No_of_days_in_week, No_of_periods,
+        teacher_list, class_teacher_periods, lab_teacher_periods,
+        subject_map, fixed_periods
+    )
+
+
 def generate_timetable_with_retry(
     No_of_classes, No_of_days_in_week, No_of_periods,
     teacher_list, class_teacher_periods, lab_teacher_periods,
     subject_map, fixed_periods=None, max_attempts=10
 ):
-    """Retry wrapper — solver is randomized, so a different shuffle may succeed."""
-    import copy as _copy
-    for attempt in range(1, max_attempts + 1):
-        logging.info(f"Solver attempt {attempt}/{max_attempts}")
-        # Deep copy inputs so each attempt starts fresh
-        result = generate_timetable(
+    if ORTOOLS_AVAILABLE:
+        logging.info("OR-Tools active — single attempt with 60s limit")
+        return generate_timetable_ortools(
             No_of_classes, No_of_days_in_week, No_of_periods,
-            _copy.deepcopy(teacher_list),
-            _copy.deepcopy(class_teacher_periods),
-            _copy.deepcopy(lab_teacher_periods),
-            _copy.deepcopy(subject_map),
+            copy.deepcopy(teacher_list),
+            copy.deepcopy(class_teacher_periods),
+            copy.deepcopy(lab_teacher_periods),
+            copy.deepcopy(subject_map),
+            fixed_periods,
+            time_limit_seconds=60
+        )
+    for attempt in range(1, max_attempts + 1):
+        logging.info(f"Backtrack attempt {attempt}/{max_attempts}")
+        result = generate_timetable_backtrack(
+            No_of_classes, No_of_days_in_week, No_of_periods,
+            copy.deepcopy(teacher_list),
+            copy.deepcopy(class_teacher_periods),
+            copy.deepcopy(lab_teacher_periods),
+            copy.deepcopy(subject_map),
             fixed_periods
         )
         if result is not None:
             logging.info(f"Solved on attempt {attempt}")
             return result
-        logging.warning(f"Attempt {attempt} failed, retrying...")
-    logging.error("All attempts exhausted — unsolvable with current constraints")
+        logging.warning(f"Attempt {attempt} failed")
+    logging.error("All attempts exhausted")
     return None
