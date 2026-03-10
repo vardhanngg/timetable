@@ -6,53 +6,48 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <style>
         .slot { font-size: 0.85rem; min-height: 60px; vertical-align: middle !important; min-width: 120px; }
-        .day-header { background-color: #f8f9fa; font-weight: bold; width: 100px; }
+        .day-header { background-color: #f8f9fa; font-weight: bold; width: 110px; }
         .free-period { color: #adb5bd; font-style: italic; background-color: #fafafa; }
-        .lab-period { background-color: #e7f5ff; border-left: 4px solid #007bff; font-weight: bold; }
+        .lab-period  { background-color: #e7f5ff; border-left: 4px solid #007bff; font-weight: bold; }
+        .conflict-cell { background-color: #fff0f0 !important; border: 2px solid #dc3545 !important; }
         .table-container { margin-bottom: 50px; }
 
-        /* ── Export modal cards ── */
-        .export-card {
-            border: 2px solid #e2e8f0;
-            border-radius: 14px;
-            padding: 28px 20px;
-            text-align: center;
-            cursor: pointer;
-            transition: all .2s;
-            background: #fff;
-        }
-        .export-card:hover {
-            border-color: #0d6efd;
-            box-shadow: 0 4px 20px rgba(13,110,253,0.13);
-            transform: translateY(-3px);
-        }
-        .export-card.excel:hover {
-            border-color: #16a34a;
-            box-shadow: 0 4px 20px rgba(22,163,74,0.13);
-        }
-        .export-card .icon { font-size: 2.6rem; margin-bottom: 10px; }
-        .export-card h5 { font-weight: 700; margin-bottom: 4px; }
-        .export-card p { font-size: 0.82rem; color: #64748b; margin: 0; }
-        .badge-fmt {
-            font-size: 0.7rem;
-            padding: 3px 9px;
-            border-radius: 20px;
-            font-weight: 600;
-            display: inline-block;
-            margin-top: 10px;
-        }
+        /* ── View tabs ── */
+        .view-tab { cursor: pointer; padding: 6px 18px; border-radius: 50px; font-weight: 600;
+                    font-size: 0.88rem; border: 2px solid #dee2e6; background: white; color: #6c757d; transition: all .15s; }
+        .view-tab.active { background: #0d6efd; border-color: #0d6efd; color: white; }
+        .view-tab:not(.active):hover { border-color: #0d6efd; color: #0d6efd; }
 
-        /* ── Loading spinner overlay ── */
-        .loading-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(255,255,255,.78);
-            z-index: 9999;
-            justify-content: center;
-            align-items: center;
-            flex-direction: column;
-        }
+        /* ── Swap modal ── */
+        .swap-slot-btn { cursor: pointer; font-size: 0.78rem; opacity: 0.6; }
+        .swap-slot-btn:hover { opacity: 1; }
+        .swappable { cursor: pointer; transition: background .15s; }
+        .swappable:hover { background: #fffbcc !important; }
+        .swap-highlight { background: #fff3cd !important; outline: 2px solid #ffc107; }
+
+        /* ── Export modal cards ── */
+        .export-card { border: 2px solid #e2e8f0; border-radius: 14px; padding: 20px 16px;
+                       text-align: center; cursor: pointer; transition: all .2s; background: #fff; }
+        .export-card:hover { border-color: #0d6efd; box-shadow: 0 4px 20px rgba(13,110,253,.13); transform: translateY(-2px); }
+        .export-card.excel:hover { border-color: #16a34a; box-shadow: 0 4px 20px rgba(22,163,74,.13); }
+        .export-card .icon { font-size: 2.2rem; margin-bottom: 8px; }
+        .export-card h5 { font-weight: 700; margin-bottom: 3px; font-size: 1rem; }
+        .export-card p  { font-size: 0.8rem; color: #64748b; margin: 0; }
+        .badge-fmt { font-size: 0.7rem; padding: 3px 9px; border-radius: 20px; font-weight: 600;
+                     display: inline-block; margin-top: 8px; }
+
+        /* ── Summary stats ── */
+        .stat-box { border-radius: 10px; padding: 10px 16px; text-align: center; }
+        .stat-box .num { font-size: 1.5rem; font-weight: 700; }
+        .stat-box .lbl { font-size: 0.75rem; color: #6c757d; }
+
+        /* ── Loading overlay ── */
+        .loading-overlay { display: none; position: fixed; inset: 0;
+            background: rgba(255,255,255,.78); z-index: 9999;
+            justify-content: center; align-items: center; flex-direction: column; }
+
+        /* ── Per-class export dropdown ── */
+        .class-export-wrap { position: relative; display: inline-block; }
     </style>
 </head>
 <body class="bg-light p-4">
@@ -63,34 +58,28 @@
     <p class="mt-3 fw-semibold text-secondary fs-5" id="overlayMsg">Preparing your file…</p>
 </div>
 
-<!-- ── Export Modal ── -->
-<div class="modal fade" id="exportModal" tabindex="-1" aria-labelledby="exportModalLabel" aria-hidden="true">
+<!-- ── Export Modal (all classes) ── -->
+<div class="modal fade" id="exportModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
             <div class="modal-header border-0 pb-0 bg-light">
-                <h5 class="modal-title fw-bold" id="exportModalLabel">
-                    <i class="bi bi-box-arrow-down me-2 text-primary"></i>Export Timetable
-                </h5>
+                <h5 class="modal-title fw-bold"><i class="bi bi-box-arrow-down me-2 text-primary"></i>Export Timetable</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body px-4 pb-2 bg-light">
-                <p class="text-muted text-center mb-4" style="font-size:.88rem;">
-                    All classes are included in a single file.
-                </p>
+                <p class="text-muted text-center mb-3" style="font-size:.85rem;">All classes in one file</p>
                 <div class="row g-3">
                     <div class="col-6">
-                        <div class="export-card excel" onclick="triggerDownload('excel')">
-                            <div class="icon">📊</div>
-                            <h5>Excel</h5>
-                            <p>One sheet per class, colour-coded, editable</p>
+                        <div class="export-card excel" onclick="triggerDownload('excel', null)">
+                            <div class="icon">📊</div><h5>Excel</h5>
+                            <p>One sheet per class, colour-coded</p>
                             <span class="badge-fmt" style="background:#dcfce7;color:#16a34a;">.XLSX</span>
                         </div>
                     </div>
                     <div class="col-6">
-                        <div class="export-card" onclick="triggerDownload('pdf')">
-                            <div class="icon">📄</div>
-                            <h5>PDF</h5>
-                            <p>Print-ready landscape layout, one page per class</p>
+                        <div class="export-card" onclick="triggerDownload('pdf', null)">
+                            <div class="icon">📄</div><h5>PDF</h5>
+                            <p>Print-ready landscape layout</p>
                             <span class="badge-fmt" style="background:#dbeafe;color:#1d4ed8;">.PDF</span>
                         </div>
                     </div>
@@ -103,84 +92,470 @@
     </div>
 </div>
 
-<!-- ── Main content (your original layout, unchanged) ── -->
-<div class="container bg-white p-5 shadow rounded">
-    <div class="text-center mb-5">
+<!-- ── Swap Modal ── -->
+<div class="modal fade" id="swapModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            <div class="modal-header border-0 bg-light">
+                <h5 class="modal-title fw-bold">🔄 Swap Slot</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body bg-light px-4">
+                <p class="text-muted mb-3" style="font-size:.85rem;">
+                    Select another slot in the <strong>same class</strong> to swap with.
+                    Only safe swaps (no teacher clash) are shown.
+                </p>
+                <div id="swapSourceInfo" class="alert alert-primary py-2 mb-3" style="font-size:.85rem;"></div>
+                <div id="swapCandidates" class="list-group"></div>
+            </div>
+            <div class="modal-footer border-0 bg-light">
+                <button class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Main content ── -->
+<div class="container-fluid px-4">
+<div class="bg-white p-4 shadow rounded">
+    <div class="text-center mb-4">
         <h1 class="display-5 text-success">📅 Timetable Ready!</h1>
-        <p class="lead">The solver successfully mapped your subjects into a conflict-free schedule.</p>
+        <p class="lead mb-0">The solver successfully mapped your subjects into a conflict-free schedule.</p>
     </div>
 
-    {% for class_idx in range(num_classes) %}
-    <div class="table-container">
-        <h3 class="border-bottom pb-2">Class: {{ class_names[class_idx] }}</h3>
-        <table class="table table-bordered text-center shadow-sm">
-            {% set day_names = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"] %}
-            <thead class="table-dark">
-                <tr>
-                    <th>Day</th>
-                    {% for p in range(periods_per_day) %}
-                    <th>P{{ p + 1 }}</th>
-                    {% endfor %}
-                </tr>
-            </thead>
-            <tbody>
-                {% for day in range(num_days) %}
-                <tr>
-                    <td class="day-header">{{ day_names[day] if day < day_names|length else "Day " ~ (day + 1) }}</td>
-                    {% for p in range(periods_per_day) %}
-                        {% set slot_index = (day * periods_per_day) + p %}
-                        {% set slot_data = timetable[slot_index][class_idx] %}
+    <!-- ── View tabs ── -->
+    <div class="d-flex gap-2 mb-4 flex-wrap justify-content-center">
+        <button class="view-tab active" id="tab-class-btn"   onclick="switchView('class')">📋 By Class</button>
+        <button class="view-tab"        id="tab-teacher-btn" onclick="switchView('teacher')">👤 By Teacher</button>
+        <button class="view-tab"        id="tab-summary-btn" onclick="switchView('summary')">📊 Summary</button>
+    </div>
 
-                        {# Logical Checks — your original logic, untouched #}
-                        {% set is_free = 'f' in slot_data|lower and slot_data|length < 4 %}
-                        {% set is_lab = 'Lab' in slot_data|string %}
+    <!-- ═══════════════════════════════════════
+         VIEW 1 — BY CLASS
+    ═══════════════════════════════════════ -->
+    <div id="view-class">
 
-                        <td class="slot {{ 'free-period' if is_free }} {{ 'lab-period' if is_lab }}">
-                            {{ "Free" if is_free else slot_data }}
-                        </td>
+        {% set day_names = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"] %}
+        {% set conflict_set = conflicts if conflicts is defined else [] %}
+
+        {% for class_idx in range(num_classes) %}
+        <div class="table-container">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+                <h4 class="mb-0">Class: {{ class_names[class_idx] }}</h4>
+                <!-- Per-class export -->
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-success cls-export-btn"
+                            data-format="excel" data-class-idx="{{ class_idx }}">
+                        <i class="bi bi-file-earmark-excel me-1"></i>Excel
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger cls-export-btn"
+                            data-format="pdf" data-class-idx="{{ class_idx }}">
+                        <i class="bi bi-file-earmark-pdf me-1"></i>PDF
+                    </button>
+                </div>
+            </div>
+            <table class="table table-bordered text-center shadow-sm">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Day</th>
+                        {% for p in range(periods_per_day) %}<th>P{{ p + 1 }}</th>{% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for day in range(num_days) %}
+                    <tr>
+                        <td class="day-header">{{ day_names[day] if day < day_names|length else "Day " ~ (day+1) }}</td>
+                        {% for p in range(periods_per_day) %}
+                            {% set slot_index = (day * periods_per_day) + p %}
+                            {% set slot_data = timetable[slot_index][class_idx] %}
+                            {% set is_free = slot_data|string|lower == 'free' or slot_data == 0 or slot_data|string == '0' or (slot_data|string|lower).startswith('f') and slot_data|string|length <= 4 %}
+                            {% set is_lab  = 'Lab' in slot_data|string %}
+                            {% set is_conflict = [class_idx, slot_index] in conflict_set %}
+                            <td class="slot
+                                {{ 'free-period' if is_free }}
+                                {{ 'lab-period'  if is_lab  }}
+                                {{ 'conflict-cell' if is_conflict }}"
+                                title="{{ '⚠️ Teacher conflict!' if is_conflict else '' }}">
+                                <span>{{ "Free" if is_free else slot_data }}</span>
+                                <br><small class="swap-slot-btn text-muted"
+                                    data-swap-class="{{ class_idx }}"
+                                    data-swap-day="{{ day }}"
+                                    data-swap-period="{{ p }}"
+                                    data-is-free="{{ 'true' if is_free else 'false' }}">⇄ swap</small>
+                            </td>
+                        {% endfor %}
+                    </tr>
                     {% endfor %}
-                </tr>
+                </tbody>
+            </table>
+        </div>
+        {% endfor %}
+
+        {% if conflicts is defined and conflicts|length > 0 %}
+        <div class="alert alert-danger">
+            <strong>⚠️ {{ conflicts|length }} conflict(s) detected</strong> — highlighted in red above.
+            The same teacher is assigned to two classes at the same time.
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         VIEW 2 — BY TEACHER
+    ═══════════════════════════════════════ -->
+    <div id="view-teacher" style="display:none;">
+        <div class="mb-3">
+            <select id="teacherViewSel" class="form-select form-select-sm w-auto d-inline-block"
+                    onchange="renderTeacherView()">
+                {% for tname in teacher_names %}
+                <option value="{{ tname }}">{{ tname }}</option>
                 {% endfor %}
-            </tbody>
-        </table>
+            </select>
+        </div>
+        <div id="teacherViewTable"></div>
     </div>
-    {% endfor %}
+
+    <!-- ═══════════════════════════════════════
+         VIEW 3 — SUMMARY
+    ═══════════════════════════════════════ -->
+    <div id="view-summary" style="display:none;">
+        <div class="row g-3">
+            {% for class_idx in range(num_classes) %}
+            {% set ns = namespace(free=0, lab=0, theory=0) %}
+            {% for day in range(num_days) %}
+                {% for p in range(periods_per_day) %}
+                    {% set sd = timetable[(day * periods_per_day) + p][class_idx] %}
+                    {% if sd|string|lower == 'free' or (sd|string|lower).startswith('f') and sd|string|length <= 4 or sd == 0 or sd|string == '0' %}
+                        {% set ns.free = ns.free + 1 %}
+                    {% elif 'Lab' in sd|string or 'lab' in sd|string|lower %}
+                        {% set ns.lab = ns.lab + 1 %}
+                    {% else %}
+                        {% set ns.theory = ns.theory + 1 %}
+                    {% endif %}
+                {% endfor %}
+            {% endfor %}
+            <div class="col-md-4 col-lg-3">
+                <div class="card shadow-sm border-0 h-100">
+                    <div class="card-header bg-dark text-white fw-bold">Class {{ class_names[class_idx] }}</div>
+                    <div class="card-body">
+                        <div class="row g-2">
+                            <div class="col-4">
+                                <div class="stat-box" style="background:#e8f5e9;">
+                                    <div class="num text-success">{{ ns.theory }}</div>
+                                    <div class="lbl">Theory</div>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="stat-box" style="background:#e7f5ff;">
+                                    <div class="num text-primary">{{ ns.lab }}</div>
+                                    <div class="lbl">Lab</div>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="stat-box" style="background:#fafafa;">
+                                    <div class="num text-muted">{{ ns.free }}</div>
+                                    <div class="lbl">Free</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-2">
+                            {% set total = ns.theory + ns.lab + ns.free %}
+                            {% set pct_theory = ((ns.theory / total) * 100)|int if total else 0 %}
+                            {% set pct_lab    = ((ns.lab    / total) * 100)|int if total else 0 %}
+                            {% set pct_free   = (100 - pct_theory - pct_lab) if total else 0 %}
+                            <div class="progress" style="height:8px;">
+                                <div class="progress-bar bg-success pct-bar" data-pct="{{ pct_theory }}"></div>
+                                <div class="progress-bar bg-primary pct-bar" data-pct="{{ pct_lab }}"></div>
+                                <div class="progress-bar bg-light border pct-bar" data-pct="{{ pct_free }}"></div>
+                            </div>
+                            <small class="text-muted">{{ total }} total slots</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
 
     <!-- ── Action buttons ── -->
-    <div class="text-center mt-4">
-        <button onclick="window.print()" class="btn btn-outline-primary btn-lg px-4">
-            🖨️ Print Timetables
-        </button>
+    <div class="text-center mt-5">
+        <button onclick="window.print()" class="btn btn-outline-primary btn-lg px-4">🖨️ Print</button>
         <button class="btn btn-success btn-lg px-4 ms-2"
                 data-bs-toggle="modal" data-bs-target="#exportModal">
-            <i class="bi bi-download me-1"></i> Download
+            <i class="bi bi-download me-1"></i> Download All
         </button>
         <a href="/" class="btn btn-outline-secondary btn-lg ms-2">Upload New PDF</a>
     </div>
 </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+{# All Jinja data lives here — pure JSON, no JS, linter ignores it #}
+<script id="flask-data" type="application/json">{{ {
+  "timetable":        timetable,
+  "num_classes":      num_classes,
+  "num_days":         num_days,
+  "periods_per_day":  periods_per_day,
+  "class_names":      class_names,
+  "teacher_map":      teacher_map,
+  "teacher_slot_map": teacher_slot_map,
+  "teacher_names":    teacher_names
+} | tojson }}</script>
+
 <script>
-function triggerDownload(format) {
-    const modal   = bootstrap.Modal.getInstance(document.getElementById('exportModal'));
+// ── Read Flask data from JSON block (no Jinja in JS) ─────────────────────────
+const _fd          = JSON.parse(document.getElementById('flask-data').textContent);
+const TIMETABLE    = _fd.timetable;
+const NUM_CLASSES  = _fd.num_classes;
+const NUM_DAYS     = _fd.num_days;
+const NUM_PERIODS  = _fd.periods_per_day;
+const CLASS_NAMES  = _fd.class_names;
+const TEACHER_MAP  = _fd.teacher_map;
+const DAY_NAMES    = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+
+// ── View switcher ─────────────────────────────────────────────────────────────
+function switchView(v) {
+    ['class','teacher','summary'].forEach(id => {
+        document.getElementById('view-' + id).style.display   = v === id ? '' : 'none';
+        document.getElementById('tab-'  + id + '-btn').classList.toggle('active', v === id);
+    });
+    if (v === 'teacher') renderTeacherView();
+}
+
+// ── Teacher view ──────────────────────────────────────────────────────────────
+function renderTeacherView() {
+    const sel       = document.getElementById('teacherViewSel');
+    const tname     = sel.value;
+    const container = document.getElementById('teacherViewTable');
+
+    // Build teacher's schedule: for each (day, period) across all classes
+    let html = `<table class="table table-bordered text-center shadow-sm">
+        <thead class="table-dark"><tr><th>Day</th>`;
+    for (let p = 0; p < NUM_PERIODS; p++) html += `<th>P${p+1}</th>`;
+    html += '</tr></thead><tbody>';
+
+    for (let d = 0; d < NUM_DAYS; d++) {
+        html += `<tr><td class="day-header fw-bold">${DAY_NAMES[d] || 'Day '+(d+1)}</td>`;
+        for (let p = 0; p < NUM_PERIODS; p++) {
+            const si = d * NUM_PERIODS + p;
+            let found = '';
+            for (let c = 0; c < NUM_CLASSES; c++) {
+                const cell = TIMETABLE[si] ? TIMETABLE[si][c] : '';
+                if (cell && String(cell).toLowerCase() !== 'free' && String(cell) !== '0') {
+                    // Check if this cell belongs to this teacher via teacher_map
+                    // We match by checking TEACHER_SLOTS data
+                    if (TEACHER_SLOTS[tname] && TEACHER_SLOTS[tname].has(`${c}-${si}`)) {
+                        found = `<strong>Class ${CLASS_NAMES[c]}</strong><br><small>${cell}</small>`;
+                    }
+                }
+            }
+            if (found) {
+                html += `<td class="slot" style="background:#e8f5e9;">${found}</td>`;
+            } else {
+                html += `<td class="slot free-period text-muted fst-italic">Free</td>`;
+            }
+        }
+        html += '</tr>';
+    }
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+// Build TEACHER_SLOTS lookup: { teacher_name: Set("classIdx-slotIdx") }
+const TEACHER_SLOTS = {};
+_fd.teacher_names.forEach(tname => { TEACHER_SLOTS[tname] = new Set(); });
+
+// Populate from timetable + teacher_slot_map passed from Flask
+const TEACHER_SLOT_MAP = _fd.teacher_slot_map;
+Object.entries(TEACHER_SLOT_MAP).forEach(([tname, slots]) => {
+    if (!TEACHER_SLOTS[tname]) TEACHER_SLOTS[tname] = new Set();
+    slots.forEach(s => TEACHER_SLOTS[tname].add(s));
+});
+
+// ── Download (all classes or single class) ────────────────────────────────────
+function triggerDownload(format, classIdx) {
+    const modal = document.getElementById('exportModal');
+    const bsModal = bootstrap.Modal.getInstance(modal);
+    if (bsModal) bsModal.hide();
+
     const overlay = document.getElementById('loadingOverlay');
     const msg     = document.getElementById('overlayMsg');
-
-    modal.hide();
-    msg.textContent = format === 'excel' ? 'Generating Excel file…' : 'Generating PDF…';
+    msg.textContent = format === 'excel' ? 'Generating Excel…' : 'Generating PDF…';
     overlay.style.display = 'flex';
 
-    // Invisible anchor triggers the Flask download route
-    const a = document.createElement('a');
-    a.href = `/download/${format}`;
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const url = classIdx !== null
+        ? `/download/${format}?class_idx=${classIdx}`
+        : `/download/${format}`;
 
-    // Hide spinner once download has started
+    const a = document.createElement('a');
+    a.href = url; a.style.display = 'none';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(() => { overlay.style.display = 'none'; }, 2800);
 }
+
+// ── Swap slots ────────────────────────────────────────────────────────────────
+let swapSource = null;  // { class_idx, day, period, slot_index, subject }
+
+function isFreeSlot(val) {
+    const s = String(val).toLowerCase().trim();
+    return s === 'free' || s === '0' || val === 0 || (s.startsWith('f') && s.length <= 4);
+}
+
+function openSwap(classIdx, day, period) {
+    const si       = day * NUM_PERIODS + period;
+    const subject  = TIMETABLE[si] ? String(TIMETABLE[si][classIdx]) : '';
+    const srcIsFree = isFreeSlot(subject);
+    swapSource     = { classIdx, day, period, si, subject, srcIsFree };
+
+    const srcLabel = srcIsFree ? 'Free Period' : subject;
+    document.getElementById('swapSourceInfo').innerHTML =
+        `Swapping <strong>${srcLabel}</strong> — Class ${CLASS_NAMES[classIdx]}, ${DAY_NAMES[day]||"Day "+(day+1)}, P${period+1}`;
+
+    const candidates = document.getElementById('swapCandidates');
+    candidates.innerHTML = '';
+    let found = 0;
+
+    for (let d2 = 0; d2 < NUM_DAYS; d2++) {
+        for (let p2 = 0; p2 < NUM_PERIODS; p2++) {
+            if (d2 === day && p2 === period) continue;
+            const si2       = d2 * NUM_PERIODS + p2;
+            const subject2  = TIMETABLE[si2] ? String(TIMETABLE[si2][classIdx]) : '';
+            const destIsFree = isFreeSlot(subject2);
+
+            // Don't swap free ↔ free (pointless)
+            if (srcIsFree && destIsFree) continue;
+            // Don't swap same subject with itself
+            if (!srcIsFree && !destIsFree && subject2 === subject) continue;
+
+            // Clash check:
+            // - free ↔ subject: only check the subject's teacher is free at the free slot
+            // - subject ↔ subject: check both teachers
+            const safe = checkSwapSafe(classIdx, si, si2, srcIsFree, destIsFree);
+            if (!safe) continue;
+
+            const btn = document.createElement('button');
+            btn.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
+            const destLabel = destIsFree ? '<em class="text-muted">Free Period</em>' : `<strong>${subject2}</strong>`;
+            btn.innerHTML = `<span>${destLabel}</span>
+                <small class="text-muted">${DAY_NAMES[d2]||"Day "+(d2+1)}, P${p2+1}</small>`;
+            btn.onclick = () => doSwap(classIdx, si, si2);
+            candidates.appendChild(btn);
+            found++;
+        }
+    }
+    if (!found) {
+        candidates.innerHTML = '<div class="text-muted text-center py-3">No safe swap candidates found.</div>';
+    }
+
+    new bootstrap.Modal(document.getElementById('swapModal')).show();
+}
+
+function checkSwapSafe(classIdx, si1, si2, si1IsFree, si2IsFree) {
+    // Free slots have no teacher — only check the subject slot's teacher
+    if (si1IsFree && si2IsFree) return false;  // free ↔ free never allowed
+
+    let teacher1 = null, teacher2 = null;
+    Object.entries(TEACHER_SLOT_MAP).forEach(([tname, slots]) => {
+        if (slots.includes(`${classIdx}-${si1}`)) teacher1 = tname;
+        if (slots.includes(`${classIdx}-${si2}`)) teacher2 = tname;
+    });
+
+    // If si1 is free, only the subject at si2 is moving — check teacher2 is free at si1
+    if (si1IsFree) {
+        if (teacher2 && TEACHER_SLOTS[teacher2]) {
+            for (let c = 0; c < NUM_CLASSES; c++) {
+                if (c === classIdx) continue;
+                if (TEACHER_SLOTS[teacher2].has(`${c}-${si1}`)) return false;
+            }
+        }
+        return true;
+    }
+
+    // If si2 is free, only the subject at si1 is moving — check teacher1 is free at si2
+    if (si2IsFree) {
+        if (teacher1 && TEACHER_SLOTS[teacher1]) {
+            for (let c = 0; c < NUM_CLASSES; c++) {
+                if (c === classIdx) continue;
+                if (TEACHER_SLOTS[teacher1].has(`${c}-${si2}`)) return false;
+            }
+        }
+        return true;
+    }
+
+    // Subject ↔ subject: check both teachers across all other classes
+    if (teacher1 && TEACHER_SLOTS[teacher1]) {
+        for (let c = 0; c < NUM_CLASSES; c++) {
+            if (c === classIdx) continue;
+            if (TEACHER_SLOTS[teacher1].has(`${c}-${si2}`)) return false;
+        }
+    }
+    if (teacher2 && TEACHER_SLOTS[teacher2]) {
+        for (let c = 0; c < NUM_CLASSES; c++) {
+            if (c === classIdx) continue;
+            if (TEACHER_SLOTS[teacher2].has(`${c}-${si1}`)) return false;
+        }
+    }
+    return true;
+}
+
+function doSwap(classIdx, si1, si2) {
+    // Swap in the local TIMETABLE copy and re-render
+    const tmp = TIMETABLE[si1][classIdx];
+    TIMETABLE[si1][classIdx] = TIMETABLE[si2][classIdx];
+    TIMETABLE[si2][classIdx] = tmp;
+
+    // Update TEACHER_SLOT_MAP
+    Object.entries(TEACHER_SLOT_MAP).forEach(([tname, slots]) => {
+        const i1 = slots.indexOf(`${classIdx}-${si1}`);
+        const i2 = slots.indexOf(`${classIdx}-${si2}`);
+        if (i1 !== -1) { slots[i1] = `${classIdx}-${si2}`; TEACHER_SLOTS[tname].delete(`${classIdx}-${si1}`); TEACHER_SLOTS[tname].add(`${classIdx}-${si2}`); }
+        if (i2 !== -1) { slots[i2] = `${classIdx}-${si1}`; TEACHER_SLOTS[tname].delete(`${classIdx}-${si2}`); TEACHER_SLOTS[tname].add(`${classIdx}-${si1}`); }
+    });
+
+    bootstrap.Modal.getInstance(document.getElementById('swapModal')).hide();
+
+    // Persist swap to server
+    fetch('/swap-slots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ class_idx: classIdx, slot1: si1, slot2: si2 })
+    }).catch(() => {});
+
+    // Re-render the affected class table
+    reRenderClassTable(classIdx);
+}
+
+function reRenderClassTable(classIdx) {
+    // Reload the page to re-render from updated timetable
+    // (simple and safe — server has already been updated via /swap-slots)
+    location.reload();
+}
+
+// ── Delegated event listeners (replaces inline onclick with Jinja) ──────────
+document.addEventListener('click', function(e) {
+    // Per-class export buttons
+    const expBtn = e.target.closest('.cls-export-btn');
+    if (expBtn) {
+        triggerDownload(expBtn.dataset.format, parseInt(expBtn.dataset.classIdx));
+        return;
+    }
+    // Swap slot links
+    const swapBtn = e.target.closest('.swap-slot-btn');
+    if (swapBtn) {
+        openSwap(
+            parseInt(swapBtn.dataset.swapClass),
+            parseInt(swapBtn.dataset.swapDay),
+            parseInt(swapBtn.dataset.swapPeriod)
+        );
+    }
+});
+
+window.onload = function() {
+    // Apply progress bar widths from data-pct attributes (avoids Jinja in style attrs)
+    document.querySelectorAll('.pct-bar').forEach(el => {
+        el.style.width = (el.dataset.pct || 0) + '%';
+    });
+};
 </script>
 </body>
 </html>

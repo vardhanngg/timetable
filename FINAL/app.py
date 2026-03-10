@@ -160,13 +160,24 @@ def download_excel():
 
     days        = meta["days"]
     periods     = meta["periods"]
-    num_classes = meta["num_classes"]                          # authoritative count
+    num_classes = meta["num_classes"]
 
-    # Build class_names list — pad with "Class N" if organized has fewer entries
     organized_keys = list(stored.get("organized", {}).keys())
-    class_names = []
-    for i in range(num_classes):
-        class_names.append(organized_keys[i] if i < len(organized_keys) else str(i + 1))
+    all_class_names = [organized_keys[i] if i < len(organized_keys) else str(i+1) for i in range(num_classes)]
+
+    # Support single-class export via ?class_idx=N
+    single_idx = request.args.get("class_idx", None)
+    if single_idx is not None:
+        try:
+            single_idx = int(single_idx)
+            class_names = [all_class_names[single_idx]]
+            class_indices = [single_idx]
+        except (ValueError, IndexError):
+            class_names = all_class_names
+            class_indices = list(range(num_classes))
+    else:
+        class_names   = all_class_names
+        class_indices = list(range(num_classes))
 
     # Day labels: Mon–Sat for 6, Mon–Fri for 5, etc.
     _day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -188,7 +199,7 @@ def download_excel():
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
 
-    for cls_idx, cls_name in enumerate(class_names):
+    for cls_idx, cls_name in zip(class_indices, class_names):
         ws = wb.create_sheet(title=f"Class {cls_name}"[:31])
 
         # Header row: Day | P1 | P2 | P3 | ...
@@ -235,11 +246,12 @@ def download_excel():
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
+    fname = f"timetable_class_{class_names[0]}.xlsx" if len(class_names) == 1 else "timetable.xlsx"
     return send_file(
         output,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         as_attachment=True,
-        download_name="timetable.xlsx"
+        download_name=fname
     )
 
 
@@ -303,7 +315,7 @@ def download_pdf():
 
 
     story = []
-    for cls_idx, cls_name in enumerate(class_names):
+    for cls_idx, cls_name in zip(class_indices, class_names):
         story.append(Paragraph(f"Class {cls_name} — Timetable", title_s))
 
         # Build table rows: header + one row per day
@@ -358,11 +370,12 @@ def download_pdf():
 
     doc.build(story)
     output.seek(0)
+    fname = f"timetable_class_{class_names[0]}.pdf" if len(class_names) == 1 else "timetable.pdf"
     return send_file(
         output,
         mimetype="application/pdf",
         as_attachment=True,
-        download_name="timetable.pdf"
+        download_name=fname
     )
 
 
@@ -384,23 +397,90 @@ def download_pdf():
 def success_summary():
     if not os.path.exists("generated_timetable.json") or not os.path.exists("generated_metadata.json"):
         return redirect(url_for('home'))
-        
+
     with open("generated_timetable.json", "r") as f:
         timetable = json.load(f)
     with open("generated_metadata.json", "r") as f:
         meta = json.load(f)
     with open("final_schedule.json", "r") as f:
         final_data = json.load(f)
-    
-    # Get unique class names from the final data verified by the user
-    class_names = list(dict.fromkeys([row['class'] for row in final_data]))
-    
-    return render_template("success.html", 
-                           timetable=timetable, 
-                           num_classes=meta['num_classes'],
+    with open("temp_web_data.json", "r") as f:
+        stored = json.load(f)
+
+    days        = meta['days']
+    periods     = meta['periods']
+    num_classes = meta['num_classes']
+
+    class_names_raw = list(dict.fromkeys([row['class'] for row in final_data]))
+    # Strip "Class " prefix stored in final_schedule
+    class_names = [c.replace("Class ", "").strip() for c in class_names_raw]
+
+    # ── Build teacher_slot_map: {teacher_name: ["classIdx-slotIdx", ...]} ──────
+    # We need to know which teacher teaches each subject in each class
+    organized = stored.get('organized', {})
+    # subject->teacher lookup per class
+    subj_teacher = {}  # (class_idx, subject_lower) -> teacher_name
+    for cidx, cname in enumerate(organized.keys()):
+        for t in organized[cname]:
+            key = (cidx, t['subject'].lower().strip())
+            subj_teacher[key] = t['teacher']
+
+    teacher_slot_map = {}   # teacher_name -> [classIdx-slotIdx]
+    teacher_names_set = set()
+    for cidx in range(num_classes):
+        for day in range(days):
+            for p in range(periods):
+                si = day * periods + p
+                try:
+                    cell = timetable[si][cidx]
+                except (IndexError, KeyError):
+                    continue
+                if not cell or cell == 0 or str(cell).lower() in ('free', 'f', '0'):
+                    continue
+                cell_str = str(cell).strip()
+                key = (cidx, cell_str.lower().strip())
+                tname = subj_teacher.get(key)
+                # Fuzzy match: check if cell_str starts with any known subject
+                if not tname:
+                    for (c2, subj), tn in subj_teacher.items():
+                        if c2 == cidx and cell_str.lower().startswith(subj[:6]):
+                            tname = tn
+                            break
+                if tname:
+                    teacher_names_set.add(tname)
+                    if tname not in teacher_slot_map:
+                        teacher_slot_map[tname] = []
+                    teacher_slot_map[tname].append(f"{cidx}-{si}")
+
+    teacher_names = sorted(teacher_names_set)
+
+    # ── Conflict checker: same teacher in 2 classes at same slot ─────────────
+    conflicts = []
+    slot_teacher_classes = {}  # (tname, si) -> [class_idxs]
+    for tname, slots in teacher_slot_map.items():
+        for s in slots:
+            cidx_str, si_str = s.split('-')
+            key = (tname, int(si_str))
+            slot_teacher_classes.setdefault(key, []).append(int(cidx_str))
+    for (tname, si), cidxs in slot_teacher_classes.items():
+        if len(cidxs) > 1:
+            for cidx in cidxs:
+                conflicts.append([cidx, si])
+
+    # teacher_map: {teacher_name: teacher_id} for JS
+    teacher_map_js = {t['teacher']: t['teacher_id']
+                      for cname in organized for t in organized[cname]}
+
+    return render_template("success.html",
+                           timetable=timetable,
+                           num_classes=num_classes,
                            class_names=class_names,
-                           num_days=meta['days'], 
-                           periods_per_day=meta['periods'])
+                           num_days=days,
+                           periods_per_day=periods,
+                           teacher_names=teacher_names,
+                           teacher_slot_map=teacher_slot_map,
+                           teacher_map=teacher_map_js,
+                           conflicts=conflicts)
 
 
 
@@ -537,12 +617,62 @@ def run_final_solver():
 
             return jsonify({"status": "success", "redirect": url_for('success_summary')})
         
-        return jsonify({"status": "error", "message": "Solver failed. Likely a teacher collision."})
+        # Build a conflict report by checking teacher workload vs available slots
+        report_lines = []
+        for cidx, cname in enumerate(stored['organized'].keys()):
+            total_slots = stored['days'] * stored['periods']
+            teachers = stored['organized'][cname]
+            total_hours = sum(int(t.get('hours', 0)) for t in teachers)
+            if total_hours > total_slots:
+                report_lines.append(f"Class {cname}: {total_hours} hours assigned but only {total_slots} slots available.")
+        # Check teacher double-booking across classes
+        teacher_class_hours = {}
+        for cname, teachers in stored['organized'].items():
+            for t in teachers:
+                tid = t.get('teacher_id')
+                tname = t.get('teacher', f'T{tid}')
+                hours = int(t.get('hours', 0))
+                teacher_class_hours.setdefault(tname, 0)
+                teacher_class_hours[tname] += hours
+        max_slots = stored['days'] * stored['periods']
+        for tname, total in teacher_class_hours.items():
+            if total > max_slots:
+                report_lines.append(f"Teacher <b>{tname}</b> has {total} total hours across all classes but only {max_slots} slots/week.")
+        conflict_report = "<br>".join(report_lines) if report_lines else "No specific conflict identified. Try removing some fixed slots or unavailability constraints."
+        return jsonify({"status": "error", "message": "Solver failed.", "conflict_report": conflict_report})
     except Exception as e:
         import traceback
         print(traceback.format_exc()) 
         return jsonify({"status": "error", "message": str(e)}), 500
 
         
+
+
+@app.route("/swap-slots", methods=["POST"])
+def swap_slots():
+    try:
+        data      = request.get_json()
+        class_idx = int(data['class_idx'])
+        si1       = int(data['slot1'])
+        si2       = int(data['slot2'])
+
+        if not os.path.exists("generated_timetable.json"):
+            return jsonify({"status": "error", "message": "No timetable found"}), 404
+
+        with open("generated_timetable.json") as f:
+            timetable = json.load(f)
+
+        # Swap the two slots for the given class
+        timetable[si1][class_idx], timetable[si2][class_idx] = \
+            timetable[si2][class_idx], timetable[si1][class_idx]
+
+        with open("generated_timetable.json", "w") as f:
+            json.dump(timetable, f)
+
+        return jsonify({"status": "success"})
+    except Exception as e:
+        import traceback; print(traceback.format_exc())
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000, debug=True)

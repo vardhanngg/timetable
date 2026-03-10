@@ -1,43 +1,9 @@
-2026-03-10 04:15:40,353 - INFO - OR-Tools loaded successfully
-2026-03-10 04:15:40,729 - WARNING -  * Debugger is active!
-2026-03-10 04:15:40,729 - INFO -  * Debugger PIN: 729-911-978
-2026-03-10 04:15:55,289 - INFO - 127.0.0.1 - - [10/Mar/2026 04:15:55] "GET / HTTP/1.1" 200 -
-2026-03-10 04:16:15,324 - DEBUG - Request options: {'method': 'post', 'url': '/openai/v1/chat/completions', 'files': None, 'idempotency_key': 'stainless-python-retry-6cf6dc3c-b2be-43ee-bf45-3aa4d7c9f562', 'json_data': {'messages': [{'role': 'user', 'content': '\n    Extract school timetable data from the provided text into JSON. \n    There are multiple course blocks (e.g., Year 1, Year 2). Treat each as a separate Class (Class 1, Class 2, etc.).\n\n    ### DATA INTEGRITY RULES:\n    1. PERIODS: This MUST be a single integer. If the value is missing or you are unsure, use 0. NEVER return an empty list.\n    2. LABS: For Lab courses, the "periods" key must be a list: [total_hours_int, 2, 1]. If hours are missing, use [0, 2, 1].\n    3. TEACHER IDs: Use only the number from the Faculty code (e.g., "S6" -> 6). If no faculty is listed, use a unique high number (e.g., 99).\n\n    ### REQUIRED JSON STRUCTURE:\n    Return ONLY:\n    {\n      "teacher_list": { "int_id": {"Name": "FacultyCode"} },\n      "class_teacher_periods": { \n          "class_id": [\n              { "teacher_id": int, "periods": int, "subject": "Course Name", "type": "theory" }\n          ]\n      },\n      "lab_teacher_periods": { \n          "class_id": [\n              { "teacher_id": int, "periods": [total_int, 2, 1], "subject": "Course Name", "type": "lab" }\n          ]\n      }\n    }\n\n    Text:\n    |I – Year|Col2|Col3|Col4|\n|---|---|---|---|\n|S.No<br>.|Course Code / Name|Faculty|Hour<br>s|\n|1.|General English|S6|3|\n|2.|II Language|S7|3|\n|3.|Problem Solving with Computers|S2|4|\n|4.|Software Lab in C – Part I|S2|6|\n|5.|Calculus|S5|4|\n|6.|Software Lab in Python – I|S3|2|\n|7.|Awareness|S8|2|\n|8.|Multidisciplinary Course|S9|3|\n|2–<br>Year||||\n|1.|General English|S6|3|\n|2.|Computer Organization and design|S9|4|\n|3.|Discrete Mathematics for Computer<br>Science|S4|4|\n|4.|Statistics for Data Science|S5|4|\n|5.|Software Lab in Data Visulaization|S10|4|\n|6.|Awareness|S7|2|\n|7.|Multidisciplinary Course|S9|2|\n|||||\n\n\n|3-Ye<br>ar|Col2|Col3|Col4|\n|---|---|---|---|\n|1.|Operating Systems|S4|4|\n|2.|Computer Networks|S10|4|\n|3.|Software Lab in Java|S11|6|\n|4.|Optimization for Machine Learning|S5|5|\n|5.|Datamining and Machine Learning|S3|5|\n|6.|Skill Enhancement Course|S10|3|\n|7.|Awareness|S7|2|\n|4-year||||\n|1.|Linux System Programming|S12|4|\n|2.|Elective – II|S4|4|\n|3.|Elective – III|S11|4|\n|4.|Research Methodology|S10|2|\n|5.|Cloud Computing|S1|4|\n|6.|Awareness|S8|2|\n|5year||||\n|1.|Stochastic Processes|S5|5|\n|2.|Deep Learning|S3|5|\n|3.|Natural Language Processing|S2|5|\n|4.|Cloud Computing|S1|5|\n\n\n5. Awareness Course S8 2\n\n\n\n    '}], 'model': 'llama-3.3-70b-versatile', 'response_format': {'type': 'json_object'}}}
-2026-03-10 04:16:15,336 - DEBUG - Sending HTTP Request: POST https://api.groq.com/openai/v1/chat/completions
-2026-03-10 04:16:15,336 - DEBUG - connect_tcp.started host='api.groq.com' port=443 local_address=None timeout=5.0 socket_options=None
-2026-03-10 04:16:15,351 - DEBUG - connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7e341308bd10>
-2026-03-10 04:16:15,351 - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x7e34142b8cd0> server_hostname='api.groq.com' timeout=5.0
-2026-03-10 04:16:15,365 - DEBUG - start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x7e341324fad0>
-2026-03-10 04:16:15,365 - DEBUG - send_request_headers.started request=<Request [b'POST']>
-2026-03-10 04:16:15,365 - DEBUG - send_request_headers.complete
-2026-03-10 04:16:15,366 - DEBUG - send_request_body.started request=<Request [b'POST']>
-2026-03-10 04:16:15,368 - DEBUG - send_request_body.complete
-2026-03-10 04:16:15,368 - DEBUG - receive_response_headers.started request=<Request [b'POST']>
-2026-03-10 04:16:17,422 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Date', b'Tue, 10 Mar 2026 04:16:17 GMT'), (b'Content-Type', b'application/json'), (b'Transfer-Encoding', b'chunked'), (b'Connection', b'keep-alive'), (b'Cache-Control', b'private, max-age=0, no-store, no-cache, must-revalidate'), (b'Server', b'cloudflare'), (b'vary', b'Origin'), (b'x-groq-region', b'bom'), (b'x-ratelimit-limit-requests', b'1000'), (b'x-ratelimit-limit-tokens', b'12000'), (b'x-ratelimit-remaining-requests', b'999'), (b'x-ratelimit-remaining-tokens', b'11123'), (b'x-ratelimit-reset-requests', b'1m26.4s'), (b'x-ratelimit-reset-tokens', b'4.385s'), (b'x-request-id', b'req_01kkazbd11fzctczj6j7n8br7d'), (b'via', b'1.1 google'), (b'cf-cache-status', b'DYNAMIC'), (b'set-cookie', b'__cf_bm=czegp.Eiwpr31dgDTrTLXKWnusvdHEwMli05K4hMT14-1773116175.3581355-1.0.1.1-YsD_W4kn8dn6FUgmT7RhPn6KQA9gScPJ005mjyM2dvvFcJfr9gzb75_00GErRXKvU0tiwDYAkCmisoDctgdjhL_6DMi5n7A.SEcu6opmxDq2PvXqM41BWKfgKOyxWCPT; HttpOnly; Secure; Path=/; Domain=groq.com; Expires=Tue, 10 Mar 2026 04:46:17 GMT'), (b'Strict-Transport-Security', b'max-age=15552000'), (b'Content-Encoding', b'gzip'), (b'CF-RAY', b'9d9f80bffc2547d9-BOM'), (b'alt-svc', b'h3=":443"; ma=86400')])
-2026-03-10 04:16:17,422 - INFO - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
-2026-03-10 04:16:17,423 - DEBUG - receive_response_body.started request=<Request [b'POST']>
-2026-03-10 04:16:17,423 - DEBUG - receive_response_body.complete
-2026-03-10 04:16:17,423 - DEBUG - response_closed.started
-2026-03-10 04:16:17,423 - DEBUG - response_closed.complete
-2026-03-10 04:16:17,423 - DEBUG - HTTP Response: POST https://api.groq.com/openai/v1/chat/completions "200 OK" Headers({'date': 'Tue, 10 Mar 2026 04:16:17 GMT', 'content-type': 'application/json', 'transfer-encoding': 'chunked', 'connection': 'keep-alive', 'cache-control': 'private, max-age=0, no-store, no-cache, must-revalidate', 'server': 'cloudflare', 'vary': 'Origin', 'x-groq-region': 'bom', 'x-ratelimit-limit-requests': '1000', 'x-ratelimit-limit-tokens': '12000', 'x-ratelimit-remaining-requests': '999', 'x-ratelimit-remaining-tokens': '11123', 'x-ratelimit-reset-requests': '1m26.4s', 'x-ratelimit-reset-tokens': '4.385s', 'x-request-id': 'req_01kkazbd11fzctczj6j7n8br7d', 'via': '1.1 google', 'cf-cache-status': 'DYNAMIC', 'set-cookie': '__cf_bm=czegp.Eiwpr31dgDTrTLXKWnusvdHEwMli05K4hMT14-1773116175.3581355-1.0.1.1-YsD_W4kn8dn6FUgmT7RhPn6KQA9gScPJ005mjyM2dvvFcJfr9gzb75_00GErRXKvU0tiwDYAkCmisoDctgdjhL_6DMi5n7A.SEcu6opmxDq2PvXqM41BWKfgKOyxWCPT; HttpOnly; Secure; Path=/; Domain=groq.com; Expires=Tue, 10 Mar 2026 04:46:17 GMT', 'strict-transport-security': 'max-age=15552000', 'content-encoding': 'gzip', 'cf-ray': '9d9f80bffc2547d9-BOM', 'alt-svc': 'h3=":443"; ma=86400'})
-2026-03-10 04:16:17,437 - INFO - 127.0.0.1 - - [10/Mar/2026 04:16:17] "[32mPOST /upload-pdf HTTP/1.1[0m" 302 -
-2026-03-10 04:16:18,432 - INFO - 127.0.0.1 - - [10/Mar/2026 04:16:18] "GET /generate HTTP/1.1" 200 -
-2026-03-10 04:16:26,904 - INFO - 127.0.0.1 - - [10/Mar/2026 04:16:26] "POST /update-data HTTP/1.1" 200 -
-2026-03-10 04:16:28,309 - INFO - 127.0.0.1 - - [10/Mar/2026 04:16:28] "GET /setup-fixed HTTP/1.1" 200 -
-2026-03-10 04:17:12,410 - INFO - OR-Tools active — single attempt with 60s limit
-2026-03-10 04:17:12,420 - INFO - CP-SAT solving: 5 classes, 36 slots, 60s limit
-2026-03-10 04:17:12,505 - INFO - CP-SAT done: OPTIMAL in 0.08s
-2026-03-10 04:17:12,507 - INFO - 127.0.0.1 - - [10/Mar/2026 04:17:12] "POST /run-final-solver HTTP/1.1" 200 -
-2026-03-10 04:17:12,999 - INFO - 127.0.0.1 - - [10/Mar/2026 04:17:12] "GET /success-summary HTTP/1.1" 200 -
-2026-03-10 04:17:45,003 - INFO - 127.0.0.1 - - [10/Mar/2026 04:17:45] "GET /setup-fixed HTTP/1.1" 200 -
-2026-03-10 04:18:29,566 - INFO - OR-Tools active — single attempt with 60s limit
-2026-03-10 04:18:29,578 - INFO - CP-SAT solving: 5 classes, 36 slots, 60s limit
-2026-03-10 04:18:29,678 - INFO - CP-SAT done: OPTIMAL in 0.10s
-2026-03-10 04:18:29,681 - INFO - 127.0.0.1 - - [10/Mar/2026 04:18:29] "POST /run-final-solver HTTP/1.1" 200 -
-2026-03-10 04:18:30,274 - INFO - 127.0.0.1 - - [10/Mar/2026 04:18:30] "GET /success-summary HTTP/1.1" 200 -
-2026-03-10 04:19:26,462 - INFO - 127.0.0.1 - - [10/Mar/2026 04:19:26] "GET /setup-fixed HTTP/1.1" 200 -
-2026-03-10 04:19:37,442 - INFO - OR-Tools active — single attempt with 60s limit
-2026-03-10 04:19:37,452 - INFO - CP-SAT solving: 5 classes, 36 slots, 60s limit
-2026-03-10 04:19:37,530 - INFO - CP-SAT done: OPTIMAL in 0.08s
-2026-03-10 04:19:37,533 - INFO - 127.0.0.1 - - [10/Mar/2026 04:19:37] "POST /run-final-solver HTTP/1.1" 200 -
-2026-03-10 04:19:37,780 - INFO - 127.0.0.1 - - [10/Mar/2026 04:19:37] "GET /success-summary HTTP/1.1" 200 -
+2026-03-10 04:42:59,698 - INFO - OR-Tools loaded successfully
+2026-03-10 04:43:00,004 - WARNING -  * Debugger is active!
+2026-03-10 04:43:00,004 - INFO -  * Debugger PIN: 729-911-978
+2026-03-10 04:43:01,958 - INFO - 127.0.0.1 - - [10/Mar/2026 04:43:01] "GET /success-summary HTTP/1.1" 200 -
+2026-03-10 04:43:02,888 - INFO - 127.0.0.1 - - [10/Mar/2026 04:43:02] "GET /success-summary HTTP/1.1" 200 -
+2026-03-10 04:45:55,359 - INFO - 127.0.0.1 - - [10/Mar/2026 04:45:55] "GET /success-summary HTTP/1.1" 200 -
+2026-03-10 04:48:04,470 - INFO - 127.0.0.1 - - [10/Mar/2026 04:48:04] "GET /success-summary HTTP/1.1" 200 -
+2026-03-10 04:48:28,671 - INFO - 127.0.0.1 - - [10/Mar/2026 04:48:28] "POST /swap-slots HTTP/1.1" 200 -
+2026-03-10 04:48:28,762 - INFO - 127.0.0.1 - - [10/Mar/2026 04:48:28] "GET /success-summary HTTP/1.1" 200 -

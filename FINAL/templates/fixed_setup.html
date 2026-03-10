@@ -107,6 +107,36 @@
             border-color: #0d6efd;
             color: white;
         }
+
+        /* ── Undo/Redo toolbar ── */
+        .undo-bar {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        .undo-bar button {
+            border: 1px solid #dee2e6;
+            background: white;
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all .15s;
+        }
+        .undo-bar button:hover:not(:disabled) { background: #f0f4ff; border-color: #0d6efd; }
+        .undo-bar button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+        /* ── Validation / conflict toast ── */
+        .toast-panel {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 3000;
+            min-width: 320px;
+            max-width: 440px;
+        }
+        .toast-panel .toast { border-radius: 10px; }
+
         .step-pill:not(.active):hover {
             border-color: #0d6efd;
             color: #0d6efd;
@@ -115,6 +145,7 @@
 
     </style>
     <meta name="periods-count" content="{{ periods }}">
+    <meta name="days-count" content="{{ days }}">
 </head>
 <body class="bg-light">
 
@@ -156,9 +187,15 @@
                 </select>
             </div>
 
-            <div class="col-md-4 text-end">
+            <div class="col-md-2 d-flex align-items-center justify-content-center">
+                <div class="undo-bar">
+                    <button id="undoBtn" onclick="undoFixed()" disabled title="Undo (Ctrl+Z)">↩ Undo</button>
+                    <button id="redoBtn" onclick="redoFixed()" disabled title="Redo (Ctrl+Y)">↪ Redo</button>
+                </div>
+            </div>
+            <div class="col-md-2 text-end">
                 <button id="genBtn" onclick="runSolver()" class="btn btn-success btn-lg w-100">
-                    ⚡ Generate Timetable
+                    ⚡ Generate
                 </button>
             </div>
         </div>
@@ -277,6 +314,9 @@ const classKeys = Object.keys(classInfo);
 const periodsMeta = document.querySelector('meta[name="periods-count"]');
 let NUM_PERIODS = periodsMeta ? parseInt(periodsMeta.content, 10) : 8;
 if (isNaN(NUM_PERIODS) || NUM_PERIODS < 1) NUM_PERIODS = 8;
+const daysMeta = document.querySelector('meta[name="days-count"]');
+let NUM_DAYS = daysMeta ? parseInt(daysMeta.content, 10) : 6;
+if (isNaN(NUM_DAYS) || NUM_DAYS < 1) NUM_DAYS = 6;
 
 // Fixed slots: storage[clsIdx][slot] = { label, teacher_id, is_free, is_event }
 const storage = {};
@@ -471,6 +511,7 @@ document.addEventListener('change', function(e) {
     const [day, period] = slot.split('-').map(Number);
     const clsIdx = document.getElementById('classSelector').value;
     if (!storage[clsIdx]) storage[clsIdx] = {};
+    snapshotClass(clsIdx);   // ← snapshot before mutation
     const selectedVal = target.value;
     if (selectedVal === '__none__') { delete storage[clsIdx][slot]; styleCard(card, 'default'); return; }
     if (selectedVal === '__free__') { storage[clsIdx][slot] = { label: 'Free', teacher_id: '__free__', is_free: true, is_event: false }; styleCard(card, 'free'); return; }
@@ -510,6 +551,8 @@ document.addEventListener('change', function(e) {
             styleCard(nextCard, 'subject');
         }
     }
+    saveSession();
+    refreshUndoButtons();
 });
 
 document.addEventListener('input', function(e) {
@@ -524,9 +567,99 @@ document.addEventListener('input', function(e) {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
+//  UNDO / REDO  (history stack per class)
+// ══════════════════════════════════════════════════════════════════════════════
+const undoStack = {};   // undoStack[clsIdx] = [snapshot, ...]
+const redoStack = {};
+
+function snapshotClass(clsIdx) {
+    if (!undoStack[clsIdx]) undoStack[clsIdx] = [];
+    undoStack[clsIdx].push(JSON.stringify(storage[clsIdx] || {}));
+    if (undoStack[clsIdx].length > 50) undoStack[clsIdx].shift();
+    if (redoStack[clsIdx]) redoStack[clsIdx] = [];
+    refreshUndoButtons();
+}
+
+function refreshUndoButtons() {
+    const clsIdx = document.getElementById('classSelector').value;
+    document.getElementById('undoBtn').disabled = !(undoStack[clsIdx] && undoStack[clsIdx].length > 0);
+    document.getElementById('redoBtn').disabled = !(redoStack[clsIdx] && redoStack[clsIdx].length > 0);
+}
+
+function undoFixed() {
+    const clsIdx = document.getElementById('classSelector').value;
+    if (!undoStack[clsIdx] || !undoStack[clsIdx].length) return;
+    if (!redoStack[clsIdx]) redoStack[clsIdx] = [];
+    redoStack[clsIdx].push(JSON.stringify(storage[clsIdx] || {}));
+    storage[clsIdx] = JSON.parse(undoStack[clsIdx].pop());
+    switchClass();
+    refreshUndoButtons();
+}
+
+function redoFixed() {
+    const clsIdx = document.getElementById('classSelector').value;
+    if (!redoStack[clsIdx] || !redoStack[clsIdx].length) return;
+    if (!undoStack[clsIdx]) undoStack[clsIdx] = [];
+    undoStack[clsIdx].push(JSON.stringify(storage[clsIdx] || {}));
+    storage[clsIdx] = JSON.parse(redoStack[clsIdx].pop());
+    switchClass();
+    refreshUndoButtons();
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', function(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undoFixed(); }
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) { e.preventDefault(); redoFixed(); }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  TOAST HELPER
+// ══════════════════════════════════════════════════════════════════════════════
+function showToast(message, type = 'warning') {
+    const panel = document.getElementById('toastPanel');
+    const id = 'toast_' + Date.now();
+    const colors = { warning: '#fff3cd', danger: '#f8d7da', success: '#d1e7dd', info: '#cff4fc' };
+    const icons  = { warning: '⚠️', danger: '❌', success: '✅', info: 'ℹ️' };
+    const html = `
+        <div id="${id}" class="toast show mb-2 shadow" style="background:${colors[type]};border:none;">
+            <div class="toast-body d-flex align-items-start gap-2" style="font-size:0.87rem;">
+                <span>${icons[type]}</span>
+                <span class="flex-grow-1">${message}</span>
+                <button type="button" class="btn-close btn-sm ms-2" onclick="document.getElementById('${id}').remove()"></button>
+            </div>
+        </div>`;
+    panel.insertAdjacentHTML('beforeend', html);
+    setTimeout(() => { const el = document.getElementById(id); if(el) el.remove(); }, 6000);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  PRE-SOLVE VALIDATION
+// ══════════════════════════════════════════════════════════════════════════════
+function validateBeforeSolve() {
+    const issues = [];
+    classKeys.forEach((cname, cidx) => {
+        const teachers = classInfo[cname] || [];
+        const totalSlots = NUM_DAYS * NUM_PERIODS;
+        let totalHours = 0;
+        teachers.forEach(t => { totalHours += (parseInt(t.hours) || 0); });
+        if (totalHours > totalSlots) {
+            issues.push(`Class <strong>${cname}</strong>: assigned hours (${totalHours}) exceed total slots (${totalSlots}).`);
+        }
+    });
+    return issues;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 //  RUN SOLVER — sends both fixed_slots AND teacher_unavailability
 // ══════════════════════════════════════════════════════════════════════════════
 function runSolver() {
+    // Pre-solve validation
+    const issues = validateBeforeSolve();
+    if (issues.length) {
+        issues.forEach(msg => showToast(msg, 'danger'));
+        return;
+    }
+
     const btn    = document.getElementById('genBtn');
     const loader = document.getElementById('loader');
 
@@ -563,17 +696,71 @@ function runSolver() {
     })
     .then(res => res.json())
     .then(data => {
-        if (data.status === 'success') window.location.href = data.redirect;
-        else alert("Error: " + data.message);
+        if (data.status === 'success') {
+            window.location.href = data.redirect;
+        } else {
+            // Show conflict report from solver
+            const msg = data.conflict_report
+                ? `<strong>Solver failed:</strong><br>${data.conflict_report}`
+                : `Solver failed: ${data.message}`;
+            showToast(msg, 'danger');
+        }
     })
-    .catch(err => alert("Network error: " + err))
+    .catch(err => showToast('Network error: ' + err, 'danger'))
     .finally(() => {
         btn.disabled = false;
         loader.style.display = 'none';
     });
 }
 
-window.onload = function() { switchClass(); };
+// ══════════════════════════════════════════════════════════════════════════════
+//  SESSION PERSISTENCE  (localStorage)
+// ══════════════════════════════════════════════════════════════════════════════
+const SESSION_KEY = 'timetable_fixed_slots';
+const UNAVAIL_KEY = 'timetable_unavail';
+
+function saveSession() {
+    try {
+        localStorage.setItem(SESSION_KEY, JSON.stringify(storage));
+        // Convert Sets to arrays for unavail (already objects here)
+        localStorage.setItem(UNAVAIL_KEY, JSON.stringify(unavailStorage));
+    } catch(e) {}
+}
+
+function loadSession() {
+    try {
+        const saved = localStorage.getItem(SESSION_KEY);
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            Object.assign(storage, parsed);
+            showToast('Previous session restored. <a href="#" onclick="clearSession()">Clear</a>', 'info');
+        }
+        const savedUnavail = localStorage.getItem(UNAVAIL_KEY);
+        if (savedUnavail) Object.assign(unavailStorage, JSON.parse(savedUnavail));
+    } catch(e) {}
+}
+
+function clearSession() {
+    localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(UNAVAIL_KEY);
+    showToast('Session cleared.', 'success');
+}
+
+// Auto-save on any storage change — hook into change listener
+const _origSwitchClass = switchClass;
+
+window.onload = function() {
+    loadSession();
+    switchClass();
+    refreshUndoButtons();
+};
+
+// Patch change handler to snapshot before each change & auto-save
+const _origChangeHandler = document.addEventListener;
 </script>
+
+<!-- ── Toast panel for validation warnings ── -->
+<div class="toast-panel" id="toastPanel"></div>
+
 </body>
 </html>
