@@ -190,10 +190,12 @@
         {% endfor %}
 
         {% if conflicts is defined and conflicts|length > 0 %}
-        <div class="alert alert-danger">
+        <div class="alert alert-danger" id="conflict-count-banner">
             <strong>⚠️ {{ conflicts|length }} conflict(s) detected</strong> — highlighted in red above.
             The same teacher is assigned to two classes at the same time.
         </div>
+        {% else %}
+        <div class="alert alert-danger" id="conflict-count-banner" style="display:none;"></div>
         {% endif %}
     </div>
 
@@ -369,6 +371,42 @@ Object.entries(TEACHER_SLOT_MAP).forEach(([tname, slots]) => {
     if (!TEACHER_SLOTS[tname]) TEACHER_SLOTS[tname] = new Set();
     slots.forEach(s => TEACHER_SLOTS[tname].add(s));
 });
+
+// ── Bug-2 fix: back-fill any slots that the fuzzy lookup in Flask missed ──────
+// Walk every non-free slot in the timetable. If it already appears in
+// TEACHER_SLOT_MAP for some teacher, good. If not, try to match by subject
+// name prefix across all teachers so TEACHER_SLOTS is always complete.
+(function backfillTeacherSlots() {
+    const totalSlots = NUM_DAYS * NUM_PERIODS;
+    for (let c = 0; c < NUM_CLASSES; c++) {
+        for (let si = 0; si < totalSlots; si++) {
+            const cell = TIMETABLE[si] ? String(TIMETABLE[si][c]) : '';
+            if (!cell || isFreeSlot(cell)) continue;
+            const key = `${c}-${si}`;
+            // Already covered?
+            const alreadyCovered = Object.values(TEACHER_SLOT_MAP).some(arr => arr.includes(key));
+            if (alreadyCovered) continue;
+            // Try to find matching teacher by subject prefix (handles lab names like "Physics (Lab 1)")
+            const cellLow = cell.toLowerCase().replace(/\s*\(lab.*\)/, '').trim();
+            for (const [tname, slots] of Object.entries(TEACHER_SLOT_MAP)) {
+                // Check if this teacher teaches anything with a matching prefix in any class
+                const teaches = slots.some(s => {
+                    const [sc] = s.split('-');
+                    if (parseInt(sc) !== c) return false;
+                    // get the subject value at that slot for this class
+                    const [, ssi] = s.split('-');
+                    const v = TIMETABLE[parseInt(ssi)] ? String(TIMETABLE[parseInt(ssi)][c]) : '';
+                    return v.toLowerCase().replace(/\s*\(lab.*\)/, '').trim() === cellLow;
+                });
+                if (teaches) {
+                    if (!TEACHER_SLOT_MAP[tname].includes(key)) TEACHER_SLOT_MAP[tname].push(key);
+                    TEACHER_SLOTS[tname].add(key);
+                    break;
+                }
+            }
+        }
+    }
+})();
 
 // ── Download (all classes or single class) ────────────────────────────────────
 function triggerDownload(format, classIdx) {
@@ -661,6 +699,9 @@ function doSwap(classIdx, srcBlock, destBlock) {
 
     // 5. Update DOM for all affected slots
     [...srcBlock, ...destBlock].forEach(si => updateCellDOM(classIdx, si));
+
+    // 6. Recompute all conflicts across the whole timetable and repaint
+    recomputeConflicts();
 }
 
 function updateCellDOM(classIdx, si) {
@@ -689,6 +730,51 @@ function updateCellDOM(classIdx, si) {
     if (btn) {
         btn.dataset.isFree         = isFree ? 'true' : 'false';
         btn.dataset.isContinuation = isContinuation ? 'true' : 'false';
+    }
+}
+
+// ── Recompute all conflicts from current TIMETABLE + TEACHER_SLOT_MAP ────────
+// Called after every swap so the red borders and the conflict banner stay accurate.
+function recomputeConflicts() {
+    // Build slot→teacher→[classIdx] from TEACHER_SLOT_MAP
+    const slotTeacherClasses = {}; // key: "tname|si"  value: [classIdx,...]
+    Object.entries(TEACHER_SLOT_MAP).forEach(([tname, slots]) => {
+        slots.forEach(s => {
+            const [cidxStr, siStr] = s.split('-');
+            const key = `${tname}|${siStr}`;
+            if (!slotTeacherClasses[key]) slotTeacherClasses[key] = [];
+            slotTeacherClasses[key].push(parseInt(cidxStr));
+        });
+    });
+
+    // Determine which (classIdx, slotIdx) pairs are in conflict
+    const conflictSet = new Set(); // "classIdx-slotIdx"
+    Object.entries(slotTeacherClasses).forEach(([key, cidxs]) => {
+        if (cidxs.length > 1) {
+            const siStr = key.split('|')[1];
+            cidxs.forEach(c => conflictSet.add(`${c}-${siStr}`));
+        }
+    });
+
+    // Update every cell's conflict-cell CSS class
+    document.querySelectorAll('td[data-slot-index]').forEach(td => {
+        const ci = td.dataset.classIdx;
+        const si = td.dataset.slotIndex;
+        const inConflict = conflictSet.has(`${ci}-${si}`);
+        td.classList.toggle('conflict-cell', inConflict);
+        td.title = inConflict ? '⚠️ Teacher conflict!' : '';
+    });
+
+    // Update the conflict count banner
+    const count = conflictSet.size;
+    const banner = document.getElementById('conflict-count-banner');
+    if (banner) {
+        if (count > 0) {
+            banner.textContent = `⚠️ ${count} conflict(s) detected — highlighted in red above.`;
+            banner.style.display = '';
+        } else {
+            banner.style.display = 'none';
+        }
     }
 }
 

@@ -6,11 +6,28 @@
     <title>Timetable AI Upload</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background-color: #f4f7f6; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-        .upload-card { background: white; padding: 40px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); max-width: 500px; width: 100%; }
+        body { background-color: #f4f7f6; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
+        .upload-card { background: white; padding: 40px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); max-width: 540px; width: 100%; }
         .btn-extract { background: #007bff; border: none; padding: 12px; font-weight: bold; width: 100%; transition: 0.3s; }
         .btn-extract:hover { background: #0056b3; }
         #loading { display: none; }
+        .divider { display: flex; align-items: center; gap: 10px; color: #aaa; font-size: 0.9rem; }
+        .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: #dee2e6; }
+        .option-card { border: 2px solid #dee2e6; border-radius: 10px; padding: 20px; transition: border-color 0.2s; }
+        .option-card:hover { border-color: #007bff; }
+
+        /* ── Manual Entry Modal ── */
+        .manual-step { display: none; }
+        .manual-step.active { display: block; }
+        #manualModal .modal-body { max-height: 70vh; overflow-y: auto; }
+        .class-entry-row { background: #f8f9fa; border-radius: 8px; padding: 12px; margin-bottom: 8px; }
+        .subject-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+        .subject-row input { flex: 1; }
+        .subject-row input.hours-input { max-width: 70px; }
+        .step-indicator { display: flex; gap: 8px; margin-bottom: 20px; }
+        .step-dot { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; background: #dee2e6; color: #666; }
+        .step-dot.active { background: #007bff; color: white; }
+        .step-dot.done { background: #198754; color: white; }
     </style>
 </head>
 <body>
@@ -18,32 +35,336 @@
 <div class="upload-card">
     <div class="text-center mb-4">
         <h2 class="fw-bold text-dark">📅 Timetable AI</h2>
-        <p class="text-muted">Llama 3.3 will extract your schedule data.</p>
+        <p class="text-muted mb-0">Generate your school timetable in three ways</p>
     </div>
 
-    <form action="/upload-pdf" method="post" enctype="multipart/form-data" id="uploadForm">
-        <div class="mb-4">
-            <label class="form-label fw-semibold">Select Schedule PDF</label>
-            <input type="file" name="file" class="form-control" accept=".pdf" required>
+    <!-- Option 1: PDF/XML Upload with AI -->
+    <div class="option-card mb-3">
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <span style="font-size:1.4rem;">🤖</span>
+            <strong>Upload PDF or XML</strong>
         </div>
-        
-        <button type="submit" class="btn btn-primary btn-extract" id="submitBtn">
-            Start AI Extraction
-        </button>
-    </form>
+        <p class="text-muted small mb-3">Upload a timetable PDF for AI extraction, or import an XML timetable directly.</p>
+        <form action="/upload-pdf" method="post" enctype="multipart/form-data" id="uploadForm">
+            <input type="file" name="file" class="form-control mb-2" accept=".pdf,.xml" required id="uploadFile">
+            <button type="submit" class="btn btn-primary btn-extract" id="submitBtn">
+                🚀 Start AI Extraction
+            </button>
+        </form>
+        <div id="loading" class="text-center mt-2 text-primary">
+            <div class="spinner-border spinner-border-sm" role="status"></div>
+            <span class="ms-2">AI is reading your PDF… please wait.</span>
+        </div>
+    </div>
 
-    <div id="loading" class="text-center mt-3 text-primary">
-        <div class="spinner-border spinner-border-sm" role="status"></div>
-        <span class="ms-2">AI is reading your PDF... please wait.</span>
+    <div class="divider my-3">or</div>
+
+    <!-- Option 2: Load Saved Data -->
+    <div class="option-card mb-3">
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <span style="font-size:1.4rem;">💾</span>
+            <strong>Resume from Saved File</strong>
+        </div>
+        <p class="text-muted small mb-3">Load a <code>.json</code> save file you downloaded earlier — skips AI entirely.</p>
+        <input type="file" id="savedFileInput" class="form-control mb-2" accept=".json">
+        <button onclick="loadSavedFile()" class="btn btn-outline-success w-100 fw-bold">
+            📂 Load Saved Data
+        </button>
+        <div id="loadingRestore" class="text-center mt-2 text-success" style="display:none;">
+            <div class="spinner-border spinner-border-sm" role="status"></div>
+            <span class="ms-2">Restoring your session…</span>
+        </div>
+        <div id="restoreError" class="alert alert-danger mt-2 py-2 small" style="display:none;"></div>
+    </div>
+
+    <div class="divider my-3">or</div>
+
+    <!-- Option 3: Manual Entry -->
+    <div class="option-card">
+        <div class="d-flex align-items-center gap-2 mb-2">
+            <span style="font-size:1.4rem;">✏️</span>
+            <strong>Enter Manually</strong>
+        </div>
+        <p class="text-muted small mb-3">No PDF? No internet? Fill in your classes and subjects step by step.</p>
+        <button onclick="openManual()" class="btn btn-outline-primary w-100 fw-bold">
+            📝 Enter Data Manually
+        </button>
     </div>
 </div>
 
+<!-- ══════════════════════════════════════════════
+     MANUAL ENTRY MODAL
+══════════════════════════════════════════════ -->
+<div class="modal fade" id="manualModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">✏️ Manual Schedule Entry</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+
+        <!-- Step indicator -->
+        <div class="step-indicator">
+          <div class="step-dot active" id="dot1">1</div>
+          <small class="text-muted my-auto">School Setup</small>
+          <div style="flex:1; height:1px; background:#dee2e6; margin:auto;"></div>
+          <div class="step-dot" id="dot2">2</div>
+          <small class="text-muted my-auto">Add Classes</small>
+        </div>
+
+        <!-- Step 1: School config -->
+        <div class="manual-step active" id="mstep1">
+          <h6 class="fw-bold mb-3">Step 1: School Week Structure</h6>
+          <div class="row g-3">
+            <div class="col-6">
+              <label class="form-label">Working Days / Week</label>
+              <select id="m_days" class="form-select">
+                <option value="5">5 Days (Mon–Fri)</option>
+                <option value="6" selected>6 Days (Mon–Sat)</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Periods / Day</label>
+              <input type="number" id="m_periods" class="form-control" value="6" min="1" max="12">
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 2: Classes -->
+        <div class="manual-step" id="mstep2">
+          <h6 class="fw-bold mb-1">Step 2: Add Class Names</h6>
+          <p class="text-muted small mb-3">One class per line, e.g. <code>8</code>, <code>MPC11</code>, <code>BiPC12</code></p>
+          <textarea id="m_classes" class="form-control font-monospace" rows="10"
+            placeholder="8&#10;9&#10;10&#10;MPC11&#10;BiPC11&#10;MBiPC11&#10;CAE11&#10;MCAE11&#10;MPC12&#10;BiPC12&#10;MBiPC12&#10;CAE12&#10;MCAE12"></textarea>
+          <p class="text-muted small mt-2">After clicking <strong>Continue →</strong> you'll enter subjects, teachers and hours on the full verification page — with Split &amp; Merge support.</p>
+        </div>
+
+      </div>
+      <div class="modal-footer justify-content-between">
+        <button class="btn btn-outline-secondary" id="mBtnBack" onclick="manualBack()" style="display:none;">← Back</button>
+        <div class="ms-auto d-flex gap-2">
+          <button class="btn btn-primary" id="mBtnNext" onclick="manualNext()">Next →</button>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    // Show loading spinner when form is submitted
-    document.getElementById('uploadForm').onsubmit = function() {
-        document.getElementById('submitBtn').disabled = true;
-        document.getElementById('loading').style.display = 'block';
-    };
+// ── AI Upload ─────────────────────────────────────────────────────────────
+document.getElementById('uploadForm').onsubmit = function(e) {
+    const fileInput = document.getElementById('uploadFile');
+    if (!fileInput.files.length) return false;
+
+    const file = fileInput.files[0];
+    const ext = file.name.split('.').pop().toLowerCase();
+
+    document.getElementById('submitBtn').disabled = true;
+    document.getElementById('loading').style.display = 'block';
+
+    if (ext === 'xml') {
+        e.preventDefault();
+        const formData = new FormData();
+        formData.append('file', file);
+
+        fetch('/upload-xml', {
+            method: 'POST',
+            body: formData
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'success') {
+                window.location.href = data.redirect;
+            } else {
+                alert(data.message || 'Upload failed.');
+                document.getElementById('submitBtn').disabled = false;
+                document.getElementById('loading').style.display = 'none';
+            }
+        })
+        .catch(() => {
+            alert('Upload failed.');
+            document.getElementById('submitBtn').disabled = false;
+            document.getElementById('loading').style.display = 'none';
+        });
+
+        return false;
+    }
+};
+
+// ── Load Saved File ───────────────────────────────────────────────────────
+async function loadSavedFile() {
+    const fileInput = document.getElementById('savedFileInput');
+    const errEl     = document.getElementById('restoreError');
+    const loadEl    = document.getElementById('loadingRestore');
+    errEl.style.display = 'none';
+
+    if (!fileInput.files.length) {
+        errEl.textContent = 'Please select a .json save file first.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    let saveData;
+    try {
+        const text = await fileInput.files[0].text();
+        saveData = JSON.parse(text);
+    } catch(e) {
+        errEl.textContent = 'Invalid file — could not parse JSON.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    // Valid if: v1 save (has temp_web_data + version) OR v2 save (has rows + page='verify')
+    const isV1 = saveData.temp_web_data && saveData.version;
+    const isV2 = saveData.page === 'verify' && Array.isArray(saveData.rows) && saveData.version;
+    if (!isV1 && !isV2) {
+        errEl.textContent = 'This file does not look like a valid timetable save file.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    loadEl.style.display = 'block';
+
+    try {
+        // ── v2 save: came from verify page — go back to verify page ──
+        if (saveData.page === 'verify' && saveData.rows) {
+            const res = await fetch('/load-verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    days:         saveData.days,
+                    periods:      saveData.periods,
+                    labs:         saveData.labs,
+                    rows:         saveData.rows,
+                    merge_groups: saveData.merge_groups || [],
+                    temp_web_data: saveData.temp_web_data || null
+                })
+            });
+            const result = await res.json();
+            if (result.status !== 'success') throw new Error(result.message || 'Server error');
+            window.location.href = result.redirect;
+            return;
+        }
+
+        // ── v1 save: came from fixed_setup — restore to fixed_setup ──
+        const res = await fetch('/load-save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ temp_web_data: saveData.temp_web_data })
+        });
+        const result = await res.json();
+        if (result.status !== 'success') throw new Error(result.message || 'Server error');
+
+        // Restore localStorage so fixed_setup loads the session
+        const token = result.session_token;
+        if (saveData.fixed_slots)  localStorage.setItem('timetable_fixed_slots',    JSON.stringify(saveData.fixed_slots));
+        if (saveData.unavail)       localStorage.setItem('timetable_unavail',         JSON.stringify(saveData.unavail));
+        if (saveData.global_slots)  localStorage.setItem('timetable_global_slots',    JSON.stringify(saveData.global_slots));
+        if (saveData.groups)        localStorage.setItem('timetable_groups',          JSON.stringify(saveData.groups));
+        if (saveData.sync_groups)   localStorage.setItem('timetable_sync_groups',     JSON.stringify(saveData.sync_groups));
+        localStorage.setItem('timetable_session_token', token);
+        window.location.href = result.redirect;
+
+    } catch(e) {
+        loadEl.style.display = 'none';
+        errEl.textContent = 'Failed to restore: ' + e.message;
+        errEl.style.display = 'block';
+    }
+}
+
+// ── Manual Entry ──────────────────────────────────────────────────────────
+let manualStep = 1;
+const modal = new bootstrap.Modal(document.getElementById('manualModal'));
+
+function openManual() {
+    manualStep = 1;
+    updateManualUI();
+    modal.show();
+}
+
+function updateManualUI() {
+    document.querySelectorAll('.manual-step').forEach((el, i) => {
+        el.classList.toggle('active', i + 1 === manualStep);
+    });
+    [1,2].forEach(i => {
+        const dot = document.getElementById('dot' + i);
+        if (dot) dot.className = 'step-dot' + (i < manualStep ? ' done' : i === manualStep ? ' active' : '');
+    });
+    document.getElementById('mBtnBack').style.display = manualStep > 1 ? '' : 'none';
+    const nextBtn = document.getElementById('mBtnNext');
+    nextBtn.style.display = '';
+    nextBtn.textContent = manualStep === 2 ? 'Continue →' : 'Next →';
+
+}
+
+function manualNext() {
+    if (manualStep === 1) {
+        const p = parseInt(document.getElementById('m_periods').value);
+        if (!p || p < 1) { alert('Enter a valid number of periods.'); return; }
+    }
+    if (manualStep === 2) {
+        const classes = getClassList();
+        if (!classes.length) { alert('Enter at least one class name.'); return; }
+        // Step 2 → go straight to verify page with days/periods + class list
+        // The verify page lets them add subjects with full Split support
+        submitToVerifyPage();
+        return;
+    }
+    manualStep++;
+    updateManualUI();
+}
+
+async function submitToVerifyPage() {
+    const days    = parseInt(document.getElementById('m_days').value);
+    const periods = parseInt(document.getElementById('m_periods').value);
+    const classes = getClassList();
+
+    // Build empty rows for each class — one blank theory row per class as a starting point
+    const rows = classes.map(cn => ({
+        class:   `Class ${cn}`,
+        subject: '',
+        teacher: '',
+        type:    'Theory',
+        periods: 3,
+        split_children: []
+    }));
+
+    const loadEl = document.getElementById('loadingRestore');
+    const errEl  = document.getElementById('restoreError');
+    loadEl.style.display = 'block';
+    modal.hide();
+
+    try {
+        const res = await fetch('/load-verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ days, periods, labs: 2, rows, merge_groups: [], temp_web_data: null })
+        });
+        const result = await res.json();
+        if (result.status !== 'success') throw new Error(result.message || 'Server error');
+        window.location.href = result.redirect;
+    } catch(e) {
+        loadEl.style.display = 'none';
+        errEl.textContent = 'Failed: ' + e.message;
+        errEl.style.display = 'block';
+        modal.show();
+    }
+}
+
+function manualBack() {
+    manualStep--;
+    updateManualUI();
+}
+
+function getClassList() {
+    return document.getElementById('m_classes').value
+        .split('\n').map(s => s.trim()).filter(Boolean);
+}
+
+
 </script>
 
 </body>

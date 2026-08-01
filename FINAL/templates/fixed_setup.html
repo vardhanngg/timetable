@@ -188,6 +188,53 @@
         /* multi-class badge on slot cards */
         .badge-multi { background:#fde68a; color:#92400e; }
 
+        /* ── Sync Groups panel ── */
+        .sync-group-card {
+            background: #fff;
+            border: 1px solid #dee2e6;
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin-bottom: 10px;
+        }
+        .sync-group-card .sg-header {
+            font-weight: 700;
+            font-size: 0.9rem;
+            color: #1e3a5f;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .sg-members-wrap {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+        .sg-member-chip {
+            display: inline-flex; align-items: center; gap: 5px;
+            background: #e0f2fe; color: #0369a1;
+            border-radius: 20px; padding: 3px 10px;
+            font-size: 0.78rem; font-weight: 600;
+        }
+        .sg-member-chip .rm { cursor:pointer; opacity:.6; font-weight:700; }
+        .sg-member-chip .rm:hover { opacity:1; color:#dc3545; }
+        .sg-member-chip.type-merged { background:#dcfce7; color:#15803d; }
+        .sg-subject-sel-wrap {
+            background: #f8faff;
+            border: 1px dashed #93c5fd;
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-bottom: 6px;
+        }
+        .sg-subject-sel-wrap select { font-size: 0.82rem; }
+        .sg-type-badge {
+            border-radius: 20px; padding: 2px 9px;
+            font-size: 0.7rem; font-weight: 700; display: inline-block;
+        }
+        .sg-type-split  { background:#fde68a; color:#92400e; }
+        .sg-type-merged { background:#d1fae5; color:#065f46; }
+
     </style>
     <meta name="periods-count" content="{{ periods }}">
     <meta name="days-count" content="{{ days }}">
@@ -195,8 +242,20 @@
 <body class="bg-light">
 
 <div id="loader" class="loading-overlay">
-    <div class="spinner-border text-primary" role="status"></div>
-    <h4 class="mt-3">Solving Timetable...</h4>
+    <div class="text-center">
+        <div class="spinner-border text-primary mb-3" style="width:3rem;height:3rem;" role="status"></div>
+        <h4 class="mb-1" id="loaderTitle">Solving Timetable...</h4>
+        <p class="text-muted mb-2" id="loaderMsg" style="font-size:.9rem;">Setting up constraints...</p>
+        <div class="progress mx-auto mb-2" style="width:280px; height:6px; background:#e9ecef;">
+            <div id="loaderBar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                 style="width:0%; transition:width 1s ease;"></div>
+        </div>
+        <small class="text-muted" id="loaderTimer">Elapsed: 0s</small>
+        <br>
+        <small class="text-muted mt-1 d-block" style="font-size:.75rem; max-width:320px;">
+            Large timetables (many classes) may take up to 3 minutes. Please wait.
+        </small>
+    </div>
 </div>
 
 <div class="container-fluid px-4">
@@ -245,8 +304,11 @@
                     <button id="redoBtn" onclick="redoFixed()" disabled title="Redo (Ctrl+Y)">↪ Redo</button>
                 </div>
             </div>
-            <div class="col-md-2 text-end">
-                <button id="genBtn" onclick="runSolver()" class="btn btn-success btn-lg w-100">
+            <div class="col-md-2 d-flex gap-2 justify-content-end">
+                <button onclick="downloadSaveFile()" class="btn btn-outline-secondary btn-lg" title="Download save file to resume later">
+                    💾 Save
+                </button>
+                <button id="genBtn" onclick="runSolver()" class="btn btn-success btn-lg flex-grow-1">
                     ⚡ Generate
                 </button>
             </div>
@@ -433,6 +495,69 @@
         </div>
         <hr class="mt-0 mb-3">
 
+        <!-- ── Sync Groups panel (collapsible) ── -->
+        <div class="mb-3">
+            <div class="d-flex align-items-center gap-2 mb-2" style="cursor:pointer;"
+                 onclick="toggleSyncPanel()">
+                <span style="font-size:1.1rem;">🔗</span>
+                <strong style="font-size:.95rem;">Sync Groups</strong>
+                <small class="text-muted">— schedule subjects simultaneously (electives, shared classes)</small>
+                <span id="syncPanelChevron" class="ms-auto text-muted">▼</span>
+            </div>
+
+            <div id="syncPanel" style="display:none;">
+                <div class="card border-0 bg-white shadow-sm mb-2">
+                    <div class="card-body py-3">
+
+                        <p class="text-muted mb-2" style="font-size:.82rem;">
+                            Use <strong>Merged class</strong> to make two or more classes occupy the same time slots for a subject or split block.<br>
+                            <strong>Example 1 — Theory:</strong> Class 1 and Class 2 both have "Values" (3h, same teacher) → merge them → both classes get "Values" at identical slots, teacher marked busy once.<br>
+                            <strong>Example 2 — Split block:</strong> 1CS, 1BA, 1BCom all have "II Language" split (sans/eng/tel, same teachers) → merge them → all three classes get "II Language" at identical slots, all sub-teachers (bala, govi, ravi) marked busy simultaneously.<br>
+                            <div class="alert alert-info py-2 px-3 mt-1 mb-1" style="font-size:.79rem; border-left:3px solid #0d6efd;">
+                                <strong>💡 Eligibility:</strong> Split blocks are mergeable only if all sub-option teachers are identical across classes. Theory subjects are mergeable only if the same teacher is assigned to all classes.
+                            </div>
+                        </p>
+                        <div class="p-2 rounded mb-3" style="background:#f0fdf4; border:1px solid #bbf7d0; font-size:.78rem; color:#166534;">
+                            💡 <strong>CBSE Class 11/12 (PCM, PCB, PCMB…):</strong>
+                            Each stream is a separate class row in your data.
+                            Use <em>Merged</em> for shared core subjects (Physics, Chemistry, English — same teacher, same room across streams).
+                            Use <em>Split-group</em> for elective slots (Math vs Bio vs CS — same time slot, different rooms).
+                            PCMB simply has both Math and Biology as separate rows and attends them at different slots like any other class.
+                        </div>
+
+                        <!-- Create sync group form -->
+                        <div class="p-3 rounded mb-3" style="background:#f0f4ff; border:1px solid #c7d7ff;">
+                            <div class="row g-2 align-items-end mb-2">
+                                <div class="col-md-5">
+                                    <label class="form-label fw-bold text-muted mb-1" style="font-size:.75rem;">GROUP NAME</label>
+                                    <input id="sgNameInput" type="text" class="form-control form-control-sm"
+                                           placeholder="e.g. II Language, Shared Lecture">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label fw-bold text-muted mb-1" style="font-size:.75rem;">TYPE</label>
+                                    <select id="sgTypeInput" class="form-select form-select-sm">
+                                        <option value="merged">🟢 Merged class — two classes attend the same subject/block at the same time</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label fw-bold text-muted mb-1" style="font-size:.75rem;">&nbsp;</label>
+                                    <button type="button" class="btn btn-sm btn-outline-warning w-100 mb-1" onclick="clearStaleGroups()" title="Remove any sync groups with stale class indices from a previous session">🧹 Clear stale groups</button>
+                                    <button class="btn btn-primary btn-sm w-100" onclick="createSyncGroup()">+ Create Group</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Existing sync groups list -->
+                        <div id="syncGroupsList">
+                            <p class="text-muted mb-0" style="font-size:.82rem;">No sync groups yet.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <hr class="mt-0 mb-3">
+
         <div class="table-responsive">
             <table class="table table-bordered bg-white">
                 <thead class="table-dark text-center">
@@ -471,12 +596,21 @@
 
 </div><!-- /container-fluid -->
 
+<!-- Server data injected before script so getElementById works immediately -->
+<span id="__session_token__" style="display:none">{{ session_token }}</span>
+<script type="application/json" id="__class_info__">{{ class_data | tojson }}</script>
+<script type="application/json" id="__auto_bundles__">{{ auto_bundles | tojson }}</script>
+<script type="application/json" id="__temp_web_data__">{{ temp_web_data | tojson }}</script>
+
 <script>
 // ══════════════════════════════════════════════════════════════════════════════
 //  DATA
 // ══════════════════════════════════════════════════════════════════════════════
-const classInfo = JSON.parse('{{ class_data | tojson | safe }}');
+const classInfo = JSON.parse(document.getElementById('__class_info__').textContent);
 const classKeys = Object.keys(classInfo);
+
+// Full server-side data snapshot — used by downloadSaveFile()
+const TEMP_WEB_DATA = JSON.parse(document.getElementById('__temp_web_data__').textContent);
 
 const periodsMeta = document.querySelector('meta[name="periods-count"]');
 let NUM_PERIODS = periodsMeta ? parseInt(periodsMeta.content, 10) : 8;
@@ -985,15 +1119,94 @@ function showToast(message, type = 'warning') {
 // ══════════════════════════════════════════════════════════════════════════════
 function validateBeforeSolve() {
     const issues = [];
+
+    // Guard: detect stale classIdx in any sync group before even checking hours
+    syncGroups.forEach(g => {
+        g.members.forEach(m => {
+            if (m.classIdx < 0 || m.classIdx >= classKeys.length) {
+                issues.push(`Sync group "<strong>${g.name}</strong>": classIdx ${m.classIdx} is out of range. Delete this group — it has stale data from a previous session.`);
+            } else if (classKeys[m.classIdx] !== String(m.className)) {
+                issues.push(`Sync group "<strong>${g.name}</strong>": member says class "<b>${m.className}</b>" but index ${m.classIdx} now points to "<b>${classKeys[m.classIdx]}</b>". <b>Delete this sync group</b> — it was created in a previous session with a different class order. Your Split rows should auto-create the correct group.`);
+            }
+        });
+    });
+    if (issues.length) return issues;  // stop here, no point checking further
+
     classKeys.forEach((cname, cidx) => {
-        const teachers = classInfo[cname] || [];
+        const teachers   = classInfo[cname] || [];
         const totalSlots = NUM_DAYS * NUM_PERIODS;
-        let totalHours = 0;
+        let totalHours   = 0;
         teachers.forEach(t => { totalHours += (parseInt(t.hours) || 0); });
         if (totalHours > totalSlots) {
             issues.push(`Class <strong>${cname}</strong>: assigned hours (${totalHours}) exceed total slots (${totalSlots}).`);
         }
     });
+
+    // Sync group validation
+    syncGroups.forEach((g, gi) => {
+        if (g.members.length < 2) {
+            issues.push(`Sync group "<strong>${g.name}</strong>" has only ${g.members.length} member(s) — needs at least 2.`);
+        }
+        // Guard: periodsPerWeek must be >= 1 — if 0 the solver silently skips the group
+        const payload = buildSyncGroupsPayload()[gi];
+        if (payload && payload.periodsPerWeek < 1) {
+            issues.push(`Sync group "<strong>${g.name}</strong>": could not determine hours/week — check that all members have hours > 0 set in the Data Verification step.`);
+        }
+        // Guard: block Generate if any member subject doesn't exist in the classInfo
+        // (subject name mismatch between Data Verification and sync group)
+        const mismatched = g.members.filter(m => {
+            const classEntries = classInfo[classKeys[m.classIdx]] || [];
+            return !classEntries.some(t => t.subject === m.subject);
+        });
+        if (mismatched.length > 0) {
+            mismatched.forEach(m => {
+                const classEntries = classInfo[classKeys[m.classIdx]] || [];
+                issues.push(
+                    `Sync group "<strong>${g.name}</strong>": subject "<b>${m.subject}</b>" in ` +
+                    `<b>Class ${classKeys[m.classIdx]}</b> doesn't match any subject in the data. ` +
+                    `Available subjects: ${classEntries.map(t=>t.subject).join(', ') || '(none)'}. ` +
+                    `<br>→ Either rename the subject in Data Verification to match, or delete this sync group and re-create it picking subjects from the dropdown.`
+                );
+            });
+            return;
+        }
+        // Check all members exist in classInfo
+        g.members.forEach(m => {
+            const cname = classKeys[m.classIdx];
+            const e = (classInfo[cname] || []).find(
+                t => String(t.teacher_id) === m.teacherId && t.subject === m.subject
+            );
+            if (!e) {
+                issues.push(`Sync group "<strong>${g.name}</strong>": subject "${m.subject}" not found in Class ${m.className}. Remove this member.`);
+            }
+        });
+        // Check hours consistency
+        const hours = g.members.map(m => {
+            const cname = classKeys[m.classIdx];
+            const e = (classInfo[cname] || []).find(
+                t => String(t.teacher_id) === m.teacherId && t.subject === m.subject
+            );
+            return e ? (parseInt(e.hours) || 0) : 0;
+        });
+        const unique = [...new Set(hours)];
+        if (unique.length > 1) {
+            issues.push(`Sync group "<strong>${g.name}</strong>": members have different hours (${unique.join(', ')}). All members must have the same hours.`);
+        }
+        // Merged: for theory subjects, same subject+teacher per class.
+        // For split blocks, compatibility was already enforced at add-time.
+        if (g.members.length > 0 && !g.members[0].blockName) {
+            const ref = g.members[0];
+            g.members.forEach(m => {
+                if (m.subject !== ref.subject) {
+                    issues.push(`Merged group "<strong>${g.name}</strong>": all members must have the same subject name. "${m.subject}" ≠ "${ref.subject}".`);
+                }
+                if (m.teacherId !== ref.teacherId) {
+                    issues.push(`Merged group "<strong>${g.name}</strong>": all members must use the same teacher. "${m.teacherName}" ≠ "${ref.teacherName}".`);
+                }
+            });
+        }
+    });
+
     return issues;
 }
 
@@ -1034,16 +1247,60 @@ function runSolver() {
     btn.disabled = true;
     loader.style.display = 'flex';
 
+    // ── Animated progress during solve ───────────────────────────────────────
+    const loaderMsgs = [
+        [0,   "Setting up constraints..."],
+        [5,   "Building teacher conflict rules..."],
+        [12,  "Placing lab blocks..."],
+        [20,  "Running CP-SAT solver..."],
+        [40,  "Optimising schedule..."],
+        [70,  "Almost there, finalising..."],
+        [110, "Still solving — large timetable, please wait..."],
+        [150, "This is taking a while — solver is working hard..."],
+    ];
+    let elapsed = 0;
+    const bar   = document.getElementById('loaderBar');
+    const timerEl = document.getElementById('loaderTimer');
+    const msgEl   = document.getElementById('loaderMsg');
+
+    const loaderInterval = setInterval(() => {
+        elapsed++;
+        // Elapsed display
+        timerEl.textContent = `Elapsed: ${elapsed}s`;
+        // Progress bar: asymptotic approach to 95%
+        const pct = Math.min(95, Math.round(95 * (1 - Math.exp(-elapsed / 90))));
+        bar.style.width = pct + '%';
+        // Status messages
+        for (let i = loaderMsgs.length - 1; i >= 0; i--) {
+            if (elapsed >= loaderMsgs[i][0]) {
+                msgEl.textContent = loaderMsgs[i][1];
+                break;
+            }
+        }
+    }, 1000);
+
     fetch('/run-final-solver', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            fixed_slots: cleanStorage,
-            teacher_unavailability: unavailPayload
-        })
+        body: (() => {
+            const bundles = buildSyncGroupsPayload();
+            // Debug: log what's being sent so mismatches are visible in console
+            if (bundles.length > 0) {
+                console.log('[Sync Groups] Sending', bundles.length, 'bundle(s) to solver:', JSON.stringify(bundles, null, 2));
+            } else if (syncGroups.length > 0) {
+                console.warn('[Sync Groups] syncGroups has', syncGroups.length, 'group(s) but buildSyncGroupsPayload() returned empty! Groups:', JSON.stringify(syncGroups));
+            }
+            return JSON.stringify({
+                fixed_slots: cleanStorage,
+                teacher_unavailability: unavailPayload,
+                elective_bundles: bundles
+            });
+        })()
     })
     .then(res => res.json())
     .then(data => {
+        clearInterval(loaderInterval);
+        bar.style.width = '100%';
         if (data.status === 'success') {
             window.location.href = data.redirect;
         } else {
@@ -1054,7 +1311,7 @@ function runSolver() {
             showToast(msg, 'danger');
         }
     })
-    .catch(err => showToast('Network error: ' + err, 'danger'))
+    .catch(err => { clearInterval(loaderInterval); showToast('Network error: ' + err, 'danger'); })
     .finally(() => {
         btn.disabled = false;
         loader.style.display = 'none';
@@ -1210,6 +1467,489 @@ function renderGlobalSlotList() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+//  SYNC GROUPS
+//  A sync group = a set of (class_idx, subject, teacher_id) entries that the
+//  solver MUST place at the same K flat slot indices.
+//
+//  Two types:
+//    "split"  — students in one or more classes split into sub-groups, each
+//               attending a different subject at the same time.
+//               Example: II Language block — Hindi/Telugu/Kannada/English all
+//               run simultaneously; each teacher is marked busy that slot.
+//    "merged" — two or more whole classes attend the SAME subject together
+//               (same teacher, same room). The solver places that subject for
+//               all involved classes at the same slots.
+//
+//  Data model:
+//    syncGroups = [{
+//      name: "II Language",
+//      type: "split" | "merged",
+//      members: [
+//        { classIdx, className, subject, teacherId, teacherName },
+//        ...
+//      ]
+//    }]
+// ══════════════════════════════════════════════════════════════════════════════
+
+let syncGroups = [];
+
+// Auto-bundles injected from split rows defined in Data Verification
+const AUTO_BUNDLES = JSON.parse(document.getElementById('__auto_bundles__').textContent);
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+// Build flat list of all (classIdx, subject, teacherId, teacherName) entries
+// from classInfo, so user can pick from a dropdown.
+function getAllSubjectEntries() {
+    const entries = [];
+    classKeys.forEach((cname, ci) => {
+        (classInfo[cname] || []).forEach(t => {
+            entries.push({
+                classIdx:    ci,
+                className:   cname,
+                subject:     t.subject,
+                teacherId:   String(t.teacher_id),
+                teacherName: t.teacher
+            });
+        });
+    });
+    return entries;
+}
+
+function toggleSyncPanel() {
+    const panel   = document.getElementById('syncPanel');
+    const chevron = document.getElementById('syncPanelChevron');
+    const open    = panel.style.display === 'none';
+    panel.style.display = open ? '' : 'none';
+    chevron.textContent = open ? '▲' : '▼';
+    if (open) renderSyncGroups();
+}
+
+function createSyncGroup() {
+    const name = document.getElementById('sgNameInput').value.trim();
+    const type = document.getElementById('sgTypeInput').value;
+    if (!name) { showToast('Enter a group name.', 'warning'); return; }
+    if (syncGroups.find(g => g.name === name)) {
+        showToast('A group with that name already exists.', 'warning'); return;
+    }
+    syncGroups.push({ name, type, members: [] });
+    saveSession();
+    renderSyncGroups();
+    document.getElementById('sgNameInput').value = '';
+    showToast(`Group "${name}" created. Now add subjects to it below.`, 'success');
+}
+
+function deleteSyncGroup(idx) {
+    syncGroups.splice(idx, 1);
+    saveSession();
+    renderSyncGroups();
+}
+
+    // (Removed ~194 lines of duplicate/dead code here: an earlier, fully-shadowed
+    // set of addMemberToGroup / removeSplitBlockFromGroup / removeMemberFromGroup /
+    // getBlockSubjects / getBlocksForClass / buildMemberSelectHtml / blocksAreMergeCompatible
+    // definitions that were silently overridden by the ones below and never executed.)
+function addMemberToGroup(groupIdx) {
+    const g = syncGroups[groupIdx];
+    if (!g) return;
+
+    const selId = `sg-add-sel-${groupIdx}`;
+    const sel   = document.getElementById(selId);
+    if (!sel || !sel.value) { showToast('Select a class/block to add.', 'warning'); return; }
+
+    const parts = sel.value.split('||');
+
+    // ── SPLIT group: block-level entry ───────────────────────────────────────
+    if (g.type === 'split' && parts[1] === 'block') {
+        const ci        = parseInt(parts[0]);
+        const blockName = parts[2];
+        const cname     = classKeys[ci];
+        if (!cname) { showToast('Class not found.', 'danger'); return; }
+
+        // Safety: classIdx must map to the class we expect
+        if (classKeys[ci] !== cname) {
+            showToast(`⚠️ Class index mismatch. Please reload the page and try again.`, 'danger');
+            return;
+        }
+
+        // Get all sub-subjects for this block
+        const subs = getBlockSubjects(cname, blockName);
+        if (!subs.length) { showToast(`No sub-options found for block "${blockName}".`, 'danger'); return; }
+        const hours = subs[0].hours;
+
+        // Hours consistency check against existing members
+        if (g.members.length > 0 && g.members[0].hours && g.members[0].hours !== hours) {
+            showToast(`⚠️ Hours mismatch: "${blockName}" has ${hours}h but this group uses ${g.members[0].hours}h.`, 'danger');
+            return;
+        }
+
+        // Check not already added for this class+block
+        const alreadyHas = g.members.some(m => m.classIdx === ci && m.blockName === blockName);
+        if (alreadyHas) { showToast('This class·block is already in the group.', 'warning'); return; }
+
+        // Expand block into individual sub-subject members (what the solver needs)
+        subs.forEach(sub => {
+            g.members.push({
+                classIdx:    ci,
+                className:   cname,
+                blockName:   blockName,   // used for display grouping and dedup
+                subject:     sub.subject,
+                teacherId:   String(sub.teacher_id),
+                teacherName: sub.teacher,
+                hours:       hours
+            });
+        });
+
+        saveSession();
+        renderSyncGroups();
+        return;
+    }
+
+    // ── MERGED group: individual subject entry ───────────────────────────────
+    const [ciStr, tidStr, subj] = parts;
+    const ci    = parseInt(ciStr);
+    const cname = classKeys[ci];
+    const entry = (classInfo[cname] || []).find(
+        t => String(t.teacher_id) === tidStr && t.subject === subj
+    );
+    if (!entry) { showToast('Subject not found.', 'warning'); return; }
+    const newHours = parseInt(entry.hours) || 0;
+
+    const isDup = g.members.some(m => m.classIdx === ci && m.subject === subj && m.teacherId === tidStr);
+    if (isDup) { showToast('Already in this group.', 'warning'); return; }
+
+    if (g.members.length > 0) {
+        const ref      = g.members[0];
+        const refEntry = (classInfo[classKeys[ref.classIdx]] || [])
+            .find(t => String(t.teacher_id) === ref.teacherId && t.subject === ref.subject);
+        const refHours = refEntry ? (parseInt(refEntry.hours) || 0) : 0;
+        if (newHours !== refHours) {
+            showToast(`⚠️ Hours mismatch: "${subj}" has ${newHours} hrs but this group uses ${refHours} hrs.`, 'danger');
+            return;
+        }
+        if (subj !== ref.subject) {
+            showToast(`⚠️ Merged groups require the same subject name. Use Split-group for different subjects.`, 'danger');
+            return;
+        }
+        if (tidStr !== ref.teacherId) {
+            showToast(`⚠️ Merged groups require the same teacher. Different teachers = use Split-group.`, 'danger');
+            return;
+        }
+    }
+
+    if (classKeys[ci] !== cname) {
+        showToast(`⚠️ Class index mismatch detected. Please reload the page and try again.`, 'danger');
+        return;
+    }
+    g.members.push({
+        classIdx:    ci,
+        className:   cname,
+        subject:     subj,
+        teacherId:   tidStr,
+        teacherName: entry.teacher,
+        hours:       newHours
+    });
+    saveSession();
+    renderSyncGroups();
+}
+
+// Remove all sub-subject members belonging to a given class+block from a split group
+function removeSplitBlockFromGroup(groupIdx, classIdx, blockOrSubj, isBlock) {
+    if (!syncGroups[groupIdx]) return;
+    syncGroups[groupIdx].members = syncGroups[groupIdx].members.filter(m => {
+        if (m.classIdx !== classIdx) return true;
+        if (isBlock) return m.blockName !== blockOrSubj;
+        return m.subject !== blockOrSubj;
+    });
+    saveSession();
+    renderSyncGroups();
+}
+
+function removeMemberFromGroup(groupIdx, memberIdx) {
+    if (syncGroups[groupIdx]) {
+        syncGroups[groupIdx].members.splice(memberIdx, 1);
+        saveSession();
+        renderSyncGroups();
+    }
+}
+
+// For split groups: collect all sub-subjects of a given block for a given class
+function getBlockSubjects(className, blockName) {
+    return (classInfo[className] || []).filter(t => t.split_block === blockName);
+}
+
+// Get unique block names for a class (for split-group dropdown)
+function getBlocksForClass(className) {
+    const blocks = {};
+    (classInfo[className] || []).forEach(t => {
+        if (t.split_block) {
+            if (!blocks[t.split_block]) blocks[t.split_block] = { hours: t.hours, subjects: [] };
+            blocks[t.split_block].subjects.push(t);
+        }
+    });
+    return blocks;  // { blockName: { hours, subjects: [...] } }
+}
+
+function buildMemberSelectHtml(groupIdx) {
+    const g = syncGroups[groupIdx];
+
+    if (g.type === 'split') {
+        // For split groups: show one entry per CLASS per BLOCK (not per sub-subject)
+        // Get already-added class+block combinations
+        const addedBlocks = new Set(
+            g.members
+              .filter(m => m.blockName)
+              .map(m => `${m.classIdx}||${m.blockName}`)
+        );
+
+        // Determine reference hours from existing members
+        let refHours = null;
+        if (g.members.length > 0 && g.members[0].hours) {
+            refHours = g.members[0].hours;
+        }
+
+        let opts = '<option value="">— Select class · block —</option>';
+        let hasAny = false;
+        classKeys.forEach((cname, cidx) => {
+            const blocks = getBlocksForClass(cname);
+            Object.entries(blocks).forEach(([blockName, info]) => {
+                const key = `${cidx}||${blockName}`;
+                if (addedBlocks.has(key)) return;  // already added
+                if (refHours !== null && info.hours !== refHours) return;  // hours mismatch
+                hasAny = true;
+                const val = `${cidx}||block||${blockName}`;
+                opts += `<option value="${val}">Class ${cname} · ${blockName} (${info.hours}h, ${info.subjects.length} sub-options)</option>`;
+            });
+        });
+
+        if (!hasAny) {
+            const reason = refHours !== null
+                ? `Only split blocks with ${refHours}h can be added (must match existing members).`
+                : 'No split blocks found. Go back to Data Verification and set rows to Split 🔀 type first.';
+            opts += `<option disabled value="">⚠ ${reason}</option>`;
+        }
+
+        return `<div class="d-flex gap-2 mt-2 align-items-center flex-wrap">
+            <select id="sg-add-sel-${groupIdx}" class="form-select form-select-sm" style="max-width:420px;">${opts}</select>
+            <button class="btn btn-sm btn-outline-primary" onclick="addMemberToGroup(${groupIdx})">+ Add</button>
+        </div>`;
+    }
+
+    // Merged groups: show individual subject entries (unchanged behaviour)
+    const entries = getAllSubjectEntries();
+    let refHours = null, refSubject = null, refTeacher = null;
+    if (g.members.length > 0) {
+        const ref = g.members[0];
+        const refEntry = (classInfo[classKeys[ref.classIdx]] || [])
+            .find(t => String(t.teacher_id) === ref.teacherId && t.subject === ref.subject);
+        refHours   = refEntry ? (parseInt(refEntry.hours) || 0) : null;
+        refSubject = ref.subject;
+        refTeacher = ref.teacherId;
+    }
+
+    const byClass = {};
+    entries.forEach(e => {
+        if (g.members.some(m => m.classIdx === e.classIdx && m.subject === e.subject && m.teacherId === e.teacherId)) return;
+        const entry = (classInfo[e.className] || []).find(t => String(t.teacher_id) === e.teacherId && t.subject === e.subject);
+        if (!entry || entry.type === 'lab' || entry.split_block) return;
+        const hrs = parseInt(entry.hours) || 0;
+        if (refHours !== null && hrs !== refHours) return;
+        if (refSubject !== null && (e.subject !== refSubject || e.teacherId !== refTeacher)) return;
+        if (!byClass[e.className]) byClass[e.className] = [];
+        byClass[e.className].push({ ...e, hrs });
+    });
+
+    const hasOptions = Object.values(byClass).some(arr => arr.length > 0);
+    let opts = '<option value="">— Select class / subject —</option>';
+    if (!hasOptions) {
+        opts += `<option disabled value="">⚠ ${refHours !== null ? `Only classes with "${refSubject}" (same teacher, ${refHours} hrs) can be added.` : 'No compatible subjects available.'}</option>`;
+    } else {
+        Object.entries(byClass).forEach(([cname, ents]) => {
+            opts += `<optgroup label="Class ${cname}">`;
+            ents.forEach(e => {
+                opts += `<option value="${e.classIdx}||${e.teacherId}||${e.subject}">${e.subject} · ${e.teacherName} (${e.hrs} hrs)</option>`;
+            });
+            opts += '</optgroup>';
+        });
+    }
+
+    return `<div class="d-flex gap-2 mt-2 align-items-center flex-wrap">
+        <select id="sg-add-sel-${groupIdx}" class="form-select form-select-sm" style="max-width:380px;">${opts}</select>
+        <button class="btn btn-sm btn-outline-primary" onclick="addMemberToGroup(${groupIdx})">+ Add</button>
+    </div>`;
+}
+
+function renderSyncGroups() {
+    const list = document.getElementById('syncGroupsList');
+    if (!syncGroups.length) {
+        list.innerHTML = '<p class="text-muted mb-0" style="font-size:.82rem;">No sync groups yet.</p>';
+        return;
+    }
+    list.innerHTML = syncGroups.map((g, gi) => {
+        const typeLabel = g.type === 'split'
+            ? '<span class="sg-type-badge sg-type-split">🟡 Split-group</span>'
+            : '<span class="sg-type-badge sg-type-merged">🟢 Merged class</span>';
+
+        // Compute hours for each member for display + warning
+        const memberHours = g.members.map(m => {
+            const e = (classInfo[classKeys[m.classIdx]] || [])
+                .find(t => String(t.teacher_id) === m.teacherId && t.subject === m.subject);
+            return e ? (parseInt(e.hours) || 0) : (m.hours || 0);
+        });
+        const uniqueHours  = [...new Set(memberHours)];
+        const hoursMismatch = uniqueHours.length > 1;
+
+        // Group members by class+block (for split blocks) or class+subject (for theory)
+        // Show one chip per unique class+block/subject entry
+        const seen = new Set();
+        const chipsList = [];
+        g.members.forEach((m, mi) => {
+            const chipKey = m.blockName
+                ? `${m.classIdx}||block||${m.blockName}`
+                : `${m.classIdx}||subj||${m.subject}`;
+            if (seen.has(chipKey)) return;
+            seen.add(chipKey);
+
+            const actualName = classKeys[m.classIdx];
+            const idxMismatch = actualName !== String(m.className);
+            const chipStyle = idxMismatch ? 'background:#fee2e2;color:#b91c1c;' : '';
+            const idxWarn  = idxMismatch
+                ? ` <span title="Index ${m.classIdx} → '${actualName}', not '${m.className}'" style="color:#dc3545;font-weight:700;">⚠️</span>`
+                : '';
+
+            const isBlock = !!m.blockName;
+            const displayLabel = isBlock ? m.blockName : `${m.subject} · ${m.teacherName}`;
+            const icon = isBlock ? '📚' : '📖';
+
+            // Sub-count for blocks
+            const blockMembers = isBlock
+                ? g.members.filter(bm => bm.classIdx === m.classIdx && bm.blockName === m.blockName)
+                : [m];
+            const subHint = isBlock
+                ? ` · ${blockMembers.length} sub-opt`
+                : '';
+
+            const escBlock = (m.blockName || '').replace(/'/g, "\'");
+            const escSubj  = (m.subject  || '').replace(/'/g, "\'");
+            const removeCall = isBlock
+                ? `removeSplitBlockFromGroup(${gi}, ${m.classIdx}, '${escBlock}', true)`
+                : `removeSplitBlockFromGroup(${gi}, ${m.classIdx}, '${escSubj}', false)`;
+
+            chipsList.push(`<span class="sg-member-chip type-merged" style="${chipStyle}">
+                ${icon} Class ${m.className}${idxWarn} · ${displayLabel}
+                <span style="opacity:.7; font-size:.72rem;">(${m.hours}h${subHint})</span>
+                <span class="rm" onclick="${removeCall}">✕</span>
+            </span>`);
+        });
+        const chips = chipsList.join('');
+
+        const hint = g.type === 'split'
+            ? `<small class="text-muted" style="font-size:.75rem;">All subjects fire at the same slots. Each teacher is marked busy. Students attend their assigned subject.</small>`
+            : `<small class="text-muted" style="font-size:.75rem;">All listed classes attend the same subject together (same teacher, same room, same slots).</small>`;
+
+        const warning = hoursMismatch
+            ? `<div class="alert alert-danger py-1 px-2 mt-2 mb-0" style="font-size:.78rem;">
+                ⚠️ Hours mismatch: members have ${uniqueHours.join(' / ')} hrs. 
+                Remove mismatched members — all must have the same hours for syncing to work.
+               </div>` : '';
+
+        // k = shared slots = min hours across members (safe fallback)
+        const k = uniqueHours.length ? Math.min(...uniqueHours) : '?';
+        const kLabel = !hoursMismatch && k > 0
+            ? `<span class="bundle-periods-badge ms-2">${k} shared slot(s)/week</span>` : '';
+
+        // Check for subject-name mismatches across all members
+        const mismatches = g.members.filter(m => {
+            const classEntries = classInfo[classKeys[m.classIdx]] || [];
+            return !classEntries.some(t => t.subject === m.subject);
+        });
+        const mismatchBanner = mismatches.length > 0 ? `
+            <div class="alert alert-danger py-2 px-3 mt-2 mb-0" style="font-size:.8rem;">
+                ⛔ <strong>${mismatches.length} member(s) have subject names that don't match the data verification screen.</strong>
+                This will cause the solver to skip this group entirely and schedule classes independently.<br>
+                ${mismatches.map(m => {
+                    const classEntries = classInfo[classKeys[m.classIdx]] || [];
+                    return `<b>Class ${m.className}</b>: "<b>${m.subject}</b>" not found. Available: ${classEntries.map(t=>t.subject).join(', ') || 'none'}`;
+                }).join('<br>')}
+                <br><strong>Fix:</strong> Remove this group, go back to Data Verification and ensure the subject names match exactly (e.g. if it's called "II Language" there, use "II Language" here — or rename it to "sans"/"eng2" there first).
+            </div>` : '';
+
+        return `<div class="sync-group-card">
+            <div class="sg-header">
+                <span>🔗 ${g.name} &nbsp;${typeLabel}${kLabel}
+                    <span class="text-muted ms-2" style="font-size:.78rem; font-weight:400;">${g.members.length} member(s)</span>
+                </span>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteSyncGroup(${gi})">✕ Remove</button>
+            </div>
+            ${hint}
+            ${warning}
+            ${mismatchBanner}
+            <div class="sg-members-wrap mt-2">${chips || '<span class="text-muted" style="font-size:.8rem;">No subjects added yet.</span>'}</div>
+            <div class="sg-subject-sel-wrap">
+                <div class="fw-bold mb-1" style="font-size:.75rem; color:#6c757d;">ADD SUBJECT TO THIS GROUP:</div>
+                ${buildMemberSelectHtml(gi)}
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// Remove all sync groups whose members have classIdx mismatches (stale from old sessions)
+function clearStaleGroups() {
+    const before = syncGroups.length;
+    syncGroups = syncGroups.filter(g => {
+        // Keep auto-bundle groups always (they're always correct)
+        const isAuto = (AUTO_BUNDLES || []).some(b => b.name === g.name);
+        if (isAuto) return true;
+        // Remove if ANY member has a classIdx→name mismatch
+        return !g.members.some(m =>
+            m.classIdx < 0 ||
+            m.classIdx >= classKeys.length ||
+            classKeys[m.classIdx] !== String(m.className)
+        );
+    });
+    const removed = before - syncGroups.length;
+    saveSession();
+    renderSyncGroups();
+    if (removed > 0) {
+        showToast(`✅ Removed ${removed} stale group(s). Your Split-row groups are auto-populated below.`, 'success');
+    } else {
+        showToast('No stale groups found.', 'info');
+    }
+}
+
+// Convert syncGroups → elective_bundles format for the solver.
+// All groups are now type "merged". A merged split-block group has multiple members
+// per class (one per sub-subject), all with the same classIdx.
+// The solver constrains all member subjects to fire at the same K slots.
+function buildSyncGroupsPayload() {
+    return syncGroups.map(g => {
+        const hours = g.members.length > 0 ? (g.members[0].hours || 1) : 1;
+        const periodsPerWeek = Math.max(1, hours);
+
+        // Build class_assignments: classIdx → display subject name
+        // For a split block, use the block name; for theory, use the subject name.
+        const class_assignments = {};
+        const seenClassBlock = new Set();
+        g.members.forEach(m => {
+            const label = m.blockName || m.subject;
+            const key   = `${m.classIdx}||${label}`;
+            if (!seenClassBlock.has(key)) {
+                class_assignments[m.classIdx] = label;
+                seenClassBlock.add(key);
+            }
+        });
+
+        return {
+            name:           g.name,
+            type:           'merged',
+            periodsPerWeek: periodsPerWeek,
+            members:        g.members.map(m => ({ ...m })),
+            assignments:    class_assignments
+        };
+    });
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 //  SESSION PERSISTENCE  (localStorage)
 // ══════════════════════════════════════════════════════════════════════════════
 const SESSION_KEY   = 'timetable_fixed_slots';
@@ -1218,14 +1958,15 @@ const SESSION_TOKEN = 'timetable_session_token';
 
 // Each page render gets a unique token from Flask (class names + count as fingerprint)
 // If token changes it means new data was uploaded — wipe old session automatically
-const CURRENT_TOKEN = "{{ session_token }}";
+const CURRENT_TOKEN = document.getElementById("__session_token__").textContent.trim();
 
 function saveSession() {
     try {
         localStorage.setItem(SESSION_KEY,    JSON.stringify(storage));
         localStorage.setItem(UNAVAIL_KEY,    JSON.stringify(unavailStorage));
-        localStorage.setItem('timetable_global_slots', JSON.stringify(globalSlots));
-        localStorage.setItem('timetable_groups',       JSON.stringify(groups));
+        localStorage.setItem('timetable_global_slots',    JSON.stringify(globalSlots));
+        localStorage.setItem('timetable_groups',          JSON.stringify(groups));
+        localStorage.setItem('timetable_sync_groups',     JSON.stringify(syncGroups));
         localStorage.setItem(SESSION_TOKEN,  CURRENT_TOKEN);
     } catch(e) {}
 }
@@ -1234,7 +1975,6 @@ function loadSession() {
     try {
         const storedToken = localStorage.getItem(SESSION_TOKEN);
         if (storedToken !== CURRENT_TOKEN) {
-            // New timetable data — discard everything from the old session
             clearSession(true);
             return;
         }
@@ -1250,7 +1990,58 @@ function loadSession() {
         if (savedGlobal) { globalSlots = JSON.parse(savedGlobal); renderGlobalSlotList(); }
         const savedGroups = localStorage.getItem('timetable_groups');
         if (savedGroups) { groups = JSON.parse(savedGroups); rebuildGroupOptGroup(); }
+        const savedBundles = localStorage.getItem('timetable_sync_groups');
+        if (savedBundles) {
+            const parsed = JSON.parse(savedBundles);
+            // Validate every member's classIdx still points to the correct className.
+            // Even within the same session token, manually-created groups can have
+            // stale indices if the user uploaded a different PDF.
+            const valid = parsed.filter(g => {
+                if (!g.members || g.members.length === 0) return true;
+                return g.members.every(m => {
+                    if (m.classIdx === undefined || m.classIdx === null) return true;
+                    const currentName = classKeys[m.classIdx];
+                    // If stored className doesn't match current classKeys[classIdx], stale
+                    return !m.className || !currentName || m.className === currentName;
+                });
+            });
+            if (valid.length < parsed.length) {
+                console.warn(`[Session] Dropped ${parsed.length - valid.length} stale sync group(s) with wrong classIdx.`);
+            }
+            syncGroups = valid;
+            if (syncGroups.length > 0) renderSyncGroups();
+        }
     } catch(e) {}
+
+    // Auto-populate sync groups from Split rows.
+    // Auto-bundles from the server are ALWAYS the source of truth.
+    // Wipe ALL manually-created groups that are not in AUTO_BUNDLES — they are
+    // either redundant (same as an auto-bundle) or stale (wrong classIdx from a
+    // previous session with different class order).
+    const autoBundleNames = new Set((AUTO_BUNDLES || []).map(b => b.name));
+
+    // Keep only auto-bundle groups (discard any manually-created ones from localStorage)
+    const manualGroups = syncGroups.filter(g => !autoBundleNames.has(g.name));
+    if (manualGroups.length > 0) {
+        syncGroups = syncGroups.filter(g => autoBundleNames.has(g.name));
+        showToast(`ℹ️ Manually-created sync group(s) removed: "${manualGroups.map(g=>g.name).join('", "')}". Split-row blocks are auto-managed — no manual groups needed.`, 'info');
+    }
+
+    // Now add/refresh all auto-bundles from the server
+    if (AUTO_BUNDLES && AUTO_BUNDLES.length > 0) {
+        let changed = 0;
+        AUTO_BUNDLES.forEach(b => {
+            const existingIdx = syncGroups.findIndex(g => g.name === b.name);
+            const freshGroup  = { name: b.name, type: b.type || 'split', members: b.members || [] };
+            if (existingIdx >= 0) {
+                syncGroups[existingIdx] = freshGroup;
+            } else {
+                syncGroups.push(freshGroup);
+            }
+            changed++;
+        });
+        if (changed > 0) { saveSession(); renderSyncGroups(); }
+    }
 }
 
 function clearSession(silent) {
@@ -1258,6 +2049,7 @@ function clearSession(silent) {
     localStorage.removeItem(UNAVAIL_KEY);
     localStorage.removeItem('timetable_global_slots');
     localStorage.removeItem('timetable_groups');
+    localStorage.removeItem('timetable_sync_groups');
     localStorage.removeItem(SESSION_TOKEN);
     if (!silent) showToast('Session cleared.', 'success');
 }
@@ -1270,6 +2062,37 @@ window.onload = function() {
     switchClass();
     refreshUndoButtons();
 };
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  DOWNLOAD SAVE FILE
+// ══════════════════════════════════════════════════════════════════════════════
+function downloadSaveFile() {
+    // Make sure the latest state is written to localStorage first
+    saveSession();
+
+    const saveData = {
+        version:       1,
+        savedAt:       new Date().toISOString(),
+        temp_web_data: TEMP_WEB_DATA,
+        fixed_slots:   JSON.parse(localStorage.getItem('timetable_fixed_slots')  || '{}'),
+        unavail:       JSON.parse(localStorage.getItem('timetable_unavail')       || '{}'),
+        global_slots:  JSON.parse(localStorage.getItem('timetable_global_slots') || '[]'),
+        groups:        JSON.parse(localStorage.getItem('timetable_groups')        || '[]'),
+        sync_groups:   JSON.parse(localStorage.getItem('timetable_sync_groups')   || '[]'),
+    };
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const blob    = new Blob([JSON.stringify(saveData, null, 2)], { type: 'application/json' });
+    const url     = URL.createObjectURL(blob);
+    const a       = document.createElement('a');
+    a.href        = url;
+    a.download    = `timetable_save_${dateStr}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('💾 Save file downloaded! Use "Load Saved Data" on the upload page to restore.', 'success');
+}
 
 // Patch change handler to snapshot before each change & auto-save
 const _origChangeHandler = document.addEventListener;

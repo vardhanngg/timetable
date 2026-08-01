@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<timetable>
+  <config>
+    <days>5</days>
+    <periods>8</periods>
+  </config>
+
+  <classes>
+    <!-- ════════════════════════════════════════════════════════════ -->
+    <!-- I-CSE-A: 30 hours/week (3 theory + 6 lab + 2 lab + awareness) -->
+    <!-- ════════════════════════════════════════════════════════════ -->
+    <class name="I-CSE-A">
+      <subject>
+        <name>General English</name>
+        <teacher>Dr. S6 - English</teacher>
+        <hours>3</hours>
+        <type>theory</type>
+      </subject>
+      <subject>
+        <name>II Language - Telugu</name>
+        <teacher>Dr. S7 - Languages</teacher>
+        <hours>3</hours>
+        <type>theory</type>
+      </subject>
+      <subject>
+        <name>Problem Solving - Computers</name>
+        <teacher>Dr. S2 - CS Faculty</teacher>
+        <hours>4</hours>
+        <type>theory</type>
+      </subject>
+      <subject>
+        <name>Calculus</name>
+        <teacher>Dr. S5 - Mathematics</teacher>
+        <hours>4</hours>
+        <type>theory</type>
+      </subject>
+      <subject>
+        <name>Awareness Course</name>
+        <teacher>Dr. S8 - Soft Skills</teacher>
+        <hours>2</hours>
+        <type>theory</type>
+      </subject>
+      <subject>
+        <name>Software Lab C - Part I</name>
+        <teacher>Dr. S2 - CS Faculty</teacher>
+        <hours>6</hours>
+        <type>lab</type>
+        <periods>2</periods>
+      </subject>
+      <subject>
+        <name>Software Lab Python - I</name>
+        <teacher>Dr. S3 - CS Lab Coordinator</teacher>
+        <hours>2</hours>
+        <type>lab</type>
+        <periods>1</periods>
+      </subject>
+      <subject>
+        <name>Multidisciplinary Course</name>
+        <teacher>Dr. S4 - Core Faculty</teacher>
+        <hours>3</hours>
+        <type>theory</type>
+      </subject>
+    </class>
+
+    <!-- ════════════════════════════════════════════════════════════ -->
+    <!-- I-CSE-B: Same as A but different language variant            -->
+    <!-- ════════════════════════════════════════════════════════════ -->
+    <class name="I-CSE-B">
+      <subject>
+        <name>General English</name>
+        <teacher>Dr. S6 - English</teacher>
+        <hours>3</hours>
+        <type>theory</type>
+      </subject>
+      <subject>
+        <name>II Language - Sanskrit</name>
+        <teacher>Dr. S7 - Languages</teacher>
+        <hours>3</hours>
+        <type>theory</type>
+      </subject>
+      <subject>
+        <name>Problem Solving - Computers</name>
+        <teacher>Dr. S2 - CS Faculty</teacher>
+        <hours>4</hours>
+        <type>theory</type>
+      </subject>
+      <subject>
+        <name>Calculus</name>
+        <teacher>Dr. S5 - Mathematics</teacher>
+        <hours>4</hours>
+        <type>theory</type>
+      </subject>
+      <subject>
+        <name>Awareness Course</name>
+        <teacher>Dr. S8 - Soft Skills</teacher>
+        <hours>2</hours>
+        <type>theory</type>
+      </subject>
+      <subject>
+        <name>Software Lab C - Part I</name>
+        <teacher>Dr. S2 - CS Faculty</teacher>
+        <hours>6</hours>
+        <type>lab</type>
+        <periods>2</periods>
+      </subject>
+      <subject>
+        <name>Software Lab Python - I</name>
+        <teacher>Dr. S3 - CS Lab Coordinator</teacher>
+        <hours>2</hours>
+        <type>lab</type>
+        <periods>1</periods>
+      </subject>
+      <subject>
+        <name>Multidisciplinary Course</name>
+        <teacher>Dr. S4 - Core Faculty</teacher>
+        <hours>3</hours>
+        <type>theory</type>
+      </subject>
+    </class>
+
+    <!-- ════════════════════════════════════════════════════════════ -->
+    <!-- I-ECE-A: ECE Branch with Engineering Graphics + Circuits Lab -->
+    <!-- ════════════════════════════════════════════════════════════ -->
+    <class name="I-ECE-A">
+      <subject>
+        <name>General English</name>
+        <teacher>Dr. S6 - English</teacher>
+        <hours>3</hours>
+        <type>theory</type>
+      </subject>
+      <subject>
+        <name>II Language - Hindi</name>
+        <teacher>Dr. S7 - Languages</teacher>
+        <hours>3</hours>
+        <type>theory</type>
+      </subject>
+      <subject>
+        <name>Engineering Graphics</name>
+        <teacher>Dr. S9 - Engineering</teacher>
+        <hours>4</hours>
+        <type>theory</type>
+      </subject>
+      <subject>
+        <name>Calculus</name>
+        <teacher>Dr. S5 - Mathematics</teacher>
+        <hours>4</hours>
+        <type>theory</type>
+      </subject>
+      <subject>
+        <name>Awareness Course</name>
+        <teacher>Dr. S8 - Soft Skills</teacher>
+        <hours>2</hours>
+        <type>theory</type>
+      </subject>
+      <subject>
+        <name>Basic Circuits and Electronics</name>
+        <teacher>Dr. S10 - ECE Faculty</teacher>
+        <hours>3</hours>
+        <type>theory</type>
+      </subject>
+      <subject>
+        <name>Engineering Graphics Lab</name>
+        <teacher>Dr. S9 - Engineering</teacher>
+        <hours>4</hours>
+        <type>lab</type>
+        <periods>2</periods>
+      </subject>
+      <subject>
+        <name>Circuits Lab</name>
+        <teacher>Dr. S10 - ECE Faculty</teacher>
+        <hours>2</hours>
+        <type>lab</type>
+        <periods>1</periods>
+      </subject>
+    </class>
+
+    <!-- ════════════════════════════════════════════════════════════ -->
+    <!-- I-ECE-B: Same as A but different language variant            -->
+    <!-- ════════════════════════════════════════════════════════════ -->
+    <class name="I-ECE-B">
+      <subject>
+        <name>General English</name>
+        <teacher>Dr. S6 - English</teacher>
+        <hours>3</hours>
+        <type>theory</type>
+      </subject>
+      <subject>
+        <name>II Language - Marathi</name>
+        <teacher>Dr. S7 - Languages</teacher>
+        <hours>3</hours>
+        <type>theory</type>
+      </subject>
+      <subject>
+        <name>Engineering Graphics</name>
+        <teacher>Dr. S9 - Engineering</teacher>
+        <hours>4</hours>
+        <type>theory</type>
+      </subject>
+      <subject>
+        <name>Calculus</name>
+        <teacher>Dr. S5 - Mathematics</teacher>
+        <hours>4</hours>
+        <type>theory</type>
+      </subject>
+      <subject>
+        <name>Awareness Course</name>
+        <teacher>Dr. S8 - Soft Skills</teacher>
+        <hours>2</hours>
+        <type>theory</type>
+      </subject>
+      <subject>
+        <name>Basic Circuits and Electronics</name>
+        <teacher>Dr. S11 - ECE Faculty</teacher>
+        <hours>3</hours>
+        <type>theory</type>
+      </subject>
+      <subject>
+        <name>Engineering Graphics Lab</name>
+        <teacher>Dr. S9 - Engineering</teacher>
+        <hours>4</hours>
+        <type>lab</type>
+        <periods>2</periods>
+      </subject>
+      <subject>
+        <name>Circuits Lab</name>
+        <teacher>Dr. S11 - ECE Faculty</teacher>
+        <hours>2</hours>
+        <type>lab</type>
+        <periods>1</periods>
+      </subject>
+    </class>
+
+  </classes>
+
+</timetable>

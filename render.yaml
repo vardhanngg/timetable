@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: timetable
+    env: python
+    region: us-east
+    plan: free
+    runtime: python-3.12
+    
+    buildCommand: |
+      cd FINAL
+      pip install -r requirements.txt
+    
+    startCommand: |
+      cd FINAL
+      gunicorn --bind 0.0.0.0:$PORT --workers 2 --timeout 120 app:app
+    
+    envVars:
+      - key: FLASK_SECRET_KEY
+        generateValue: true
+      - key: FLASK_DEBUG
+        value: "0"
+      - key: FLASK_ENV
+        value: production
