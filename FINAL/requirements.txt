@@ -1,0 +1,20 @@
+# Web framework
+Flask==3.1.3
+
+# PDF text/table extraction (extractor.py)
+pymupdf4llm==0.0.27
+PyMuPDF==1.28.0
+
+# LLM extraction client (extractor.py)
+groq==1.6.0
+python-dotenv==1.2.2
+
+# Constraint solver (solver.py) — falls back to a slower backtracking solver
+# if this isn't installed, so it's not a hard runtime dependency, but install
+# it for reasonable solve times on anything beyond a handful of classes.
+ortools==9.15.6755
+
+# Timetable export (app.py: /download/excel, /download/pdf)
+openpyxl==3.1.5
+reportlab==4.4.10
+gunicorn==23.0.0
