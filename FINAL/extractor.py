@@ -64,11 +64,24 @@ def get_solver_data_from_pdf(pdf_path):
             # 1. Update Teacher List (merges unique teachers)
             final_data["teacher_list"].update(page_json.get("teacher_list", {}))
 
-            # 2. Update Theory Periods (adds new class keys)
-            final_data["class_teacher_periods"].update(page_json.get("class_teacher_periods", {}))
-
-            # 3. Update Lab Periods (adds new class keys)
-            final_data["lab_teacher_periods"].update(page_json.get("lab_teacher_periods", {}))
+            # 2 & 3. Merge Theory/Lab Periods per class.
+            # IMPORTANT: this used to be final_data[...].update(page_json[...]),
+            # which — because dict.update() replaces a key's whole value rather
+            # than merging it — silently threw away an earlier page's subjects
+            # for a class whenever that same class key showed up again on a
+            # later page (e.g. its schedule table is split across two pages).
+            # We now extend each class's period list instead, and skip exact
+            # duplicate rows in case a page boundary causes the same row to be
+            # re-emitted by the model.
+            for key in ("class_teacher_periods", "lab_teacher_periods"):
+                for class_id, new_items in page_json.get(key, {}).items():
+                    existing_items = final_data[key].setdefault(class_id, [])
+                    existing_signatures = {json.dumps(item, sort_keys=True) for item in existing_items}
+                    for item in new_items:
+                        signature = json.dumps(item, sort_keys=True)
+                        if signature not in existing_signatures:
+                            existing_items.append(item)
+                            existing_signatures.add(signature)
 
             # Small delay to prevent hitting Rate Limit on the next loop
             time.sleep(1) 

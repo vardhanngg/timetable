@@ -2,6 +2,7 @@ import random
 import copy
 import logging
 import os
+import json
 
 log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'solver_debug.log')
 logging.basicConfig(
@@ -101,12 +102,21 @@ def generate_timetable_ortools(
     # ── STEP 2: Place labs greedily (consecutive blocks) ─────────────────────
     labs = {}
     lab_used_by_class_per_day = {idx: {} for idx in range(No_of_classes)}
+    lab_shortfalls = []  # collects any lab that didn't get its full hours placed
 
     for class_idx, teacher_periods in lab_teacher_periods.items():
         for teacher_id, (total_hours, consecutive_periods, lab_number) in teacher_periods.items():
             # total_hours is the total lab hours for the semester/week.
             # Each block uses consecutive_periods slots, so number of blocks to place:
-            num_blocks = max(1, int(total_hours) // max(1, int(consecutive_periods)))
+            consecutive_periods_i = max(1, int(consecutive_periods))
+            num_blocks = max(1, int(total_hours) // consecutive_periods_i)
+            if int(total_hours) % consecutive_periods_i != 0:
+                logging.warning(
+                    f"Class {class_idx}, teacher {teacher_id}, lab {lab_number}: "
+                    f"{total_hours}h does not divide evenly into {consecutive_periods_i}-period blocks — "
+                    f"only {num_blocks * consecutive_periods_i}h will be schedulable, "
+                    f"{total_hours - num_blocks * consecutive_periods_i}h will be lost. Check the extracted hours."
+                )
             labs.setdefault(lab_number, [])
             available_slots = [
                 s for s in range(total_slots)
@@ -116,10 +126,10 @@ def generate_timetable_ortools(
             random.shuffle(available_slots)
             sessions_assigned = 0
             for slot in available_slots:
-                if slot + consecutive_periods > total_slots:
+                if slot + consecutive_periods_i > total_slots:
                     continue
                 can_assign = True
-                for i in range(consecutive_periods):
+                for i in range(consecutive_periods_i):
                     day = (slot + i) // No_of_periods
                     if (Timetable[slot + i][class_idx] != 0 or
                             (slot + i) in teacher_busy.get(teacher_id, set()) or
@@ -135,7 +145,7 @@ def generate_timetable_ortools(
                             if sub["type"] == "lab":
                                 subject_name = sub["name"]
                                 break
-                    for i in range(consecutive_periods):
+                    for i in range(consecutive_periods_i):
                         s = slot + i
                         Timetable[s][class_idx] = f"{subject_name} (Lab {lab_number})"
                         fixed_set.add((s, class_idx))
@@ -146,6 +156,35 @@ def generate_timetable_ortools(
                     sessions_assigned += 1  # one block = one session
                 if sessions_assigned >= num_blocks:
                     break
+
+            # This used to fail silently: if there weren't enough conflict-free
+            # slots to place every block, the loop just stopped and the caller
+            # got back a "successful" timetable with fewer lab hours than
+            # requested. Surface it loudly instead.
+            if sessions_assigned < num_blocks:
+                subject_name = "Lab"
+                if class_idx in subject_map and teacher_id in subject_map[class_idx]:
+                    for sub in subject_map[class_idx][teacher_id]:
+                        if sub["type"] == "lab":
+                            subject_name = sub["name"]
+                            break
+                missing_hours = (num_blocks - sessions_assigned) * consecutive_periods_i
+                msg = (f"Class {class_idx} — '{subject_name}' (Lab {lab_number}, teacher {teacher_id}): "
+                       f"only placed {sessions_assigned}/{num_blocks} block(s), "
+                       f"{missing_hours}h missing from the timetable.")
+                logging.error(f"LAB SHORTFALL: {msg}")
+                lab_shortfalls.append({
+                    "class_idx": class_idx, "teacher_id": teacher_id, "lab_number": lab_number,
+                    "subject": subject_name, "blocks_requested": num_blocks,
+                    "blocks_placed": sessions_assigned, "hours_missing": missing_hours
+                })
+
+    if lab_shortfalls:
+        try:
+            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "lab_scheduling_warnings.json"), "w") as f:
+                json.dump(lab_shortfalls, f, indent=2)
+        except Exception as e:
+            logging.error(f"Could not write lab_scheduling_warnings.json: {e}")
 
     # ── STEP 3: Build subject entries per class ───────────────────────────────
     # class_entries[cidx] = list of {teacher_id, name, type, hours}
@@ -308,25 +347,52 @@ def generate_timetable_ortools(
             involved_cidxs = list({int(m["classIdx"]) for m in members if int(m.get("classIdx", 999)) < No_of_classes})
 
             # For single-class splits (e.g. "II Language" with subs a+b in one class):
-            # The block subject is already in class_entries as "II Language" (3h).
-            # We just need to mark sub-teachers (aa, bb) as busy at the block's slots.
+            # The block subject is already in class_entries as "II Language" (3h),
+            # carrying only ONE teacher_id (the "primary" sub-option's teacher — see
+            # app.py /update-data). The OTHER sub-teachers never appear as a teacher_id
+            # on any class_entries row, so without an explicit constraint here the
+            # solver has literally no way to know they're busy whenever the block is
+            # scheduled — they could get assigned to teach a different class at the
+            # exact same slot. We fix that below by forcing every other class's use of
+            # those sub-teacher ids to zero whenever this class's block var is 1.
             # For multi-class splits: full cross-class sync constraint is applied below.
             if len(involved_cidxs) < 2:
-                # Single-class split: block teachers' busy-marking is handled
-                # by the fact the block subject row uses the primary teacher.
-                # Sub-teachers are additional teachers who need to be free at same slots.
-                # We add their teacher_busy constraints from the member list.
-                for m in members:
-                    tid_str = str(m.get('teacherId') or '')
-                    if tid_str and tid_str.lstrip('-').isdigit():
-                        tid = int(tid_str)
-                        # Block all slots for sub-teachers so they don't get double-booked
-                        # The actual slot-specific busy-marking happens when the block
-                        # subject is assigned — sub-teachers share those exact slots.
-                        # We store them in teacher_busy to prevent other uses.
-                        # (They will be freed properly since we only have one block row)
-                        pass  # teacher conflict handled via teacher_busy at solve time
-                logging.info(f"Sync group '{bname}': single-class split — sub-teachers tracked via bundle members")
+                cidx = involved_cidxs[0] if involved_cidxs else -1
+                block_name = (members[0].get('subject') or '').strip()
+                if cidx < 0 or cidx >= No_of_classes or not block_name:
+                    logging.warning(f"Sync group '{bname}': single-class split — could not resolve class/block, sub-teachers NOT locked")
+                    continue
+
+                eidx_for_block = None
+                for eidx, entry in enumerate(class_entries[cidx]):
+                    if entry["name"].lower().strip() == block_name.lower().strip():
+                        eidx_for_block = eidx
+                        break
+                if eidx_for_block is None:
+                    logging.warning(f"Sync group '{bname}': block '{block_name}' not found in class {cidx} entries — sub-teachers NOT locked")
+                    continue
+
+                primary_tid = class_entries[cidx][eidx_for_block]["teacher_id"]
+                sub_tids = {
+                    int(m['teacherId']) for m in members
+                    if str(m.get('teacherId') or '').lstrip('-').isdigit()
+                    and int(m['teacherId']) != primary_tid
+                }
+
+                locked_pairs = 0
+                for slot, slot_vars in assign_vars[cidx].items():
+                    block_vars = [v for ei, v in slot_vars if ei == eidx_for_block]
+                    if not block_vars:
+                        continue
+                    block_v = block_vars[0]
+                    for tid in sub_tids:
+                        other_vars = slot_teacher_vars.get((slot, tid), [])
+                        if other_vars:
+                            model.Add(sum(other_vars) == 0).OnlyEnforceIf(block_v)
+                            locked_pairs += 1
+
+                logging.info(f"Sync group '{bname}': single-class split — locked {len(sub_tids)} sub-teacher(s) "
+                             f"to block '{block_name}' in class {cidx} ({locked_pairs} slot constraints added)")
                 continue
 
             # Slot indicators: True iff this slot is one of K shared bundle slots
@@ -521,12 +587,21 @@ def generate_timetable_backtrack(
 
     labs = {}
     lab_used_by_class_per_day = {idx: {} for idx in range(No_of_classes)}
+    lab_shortfalls = []  # collects any lab that didn't get its full hours placed
 
     def assign_lab_periods_randomly():
         for class_idx, teacher_periods in lab_teacher_periods.items():
             for teacher_id, (total_hours, consecutive_periods, lab_number) in teacher_periods.items():
                 # total_hours = total lab hours; num_blocks = how many consecutive blocks to place
-                num_blocks = max(1, int(total_hours) // max(1, int(consecutive_periods)))
+                consecutive_periods_i = max(1, int(consecutive_periods))
+                num_blocks = max(1, int(total_hours) // consecutive_periods_i)
+                if int(total_hours) % consecutive_periods_i != 0:
+                    logging.warning(
+                        f"Class {class_idx}, teacher {teacher_id}, lab {lab_number}: "
+                        f"{total_hours}h does not divide evenly into {consecutive_periods_i}-period blocks — "
+                        f"only {num_blocks * consecutive_periods_i}h will be schedulable, "
+                        f"{total_hours - num_blocks * consecutive_periods_i}h will be lost. Check the extracted hours."
+                    )
                 labs.setdefault(lab_number, [])
                 available_slots = [
                     i for i in range(total_periods)
@@ -537,10 +612,10 @@ def generate_timetable_backtrack(
                 random.shuffle(available_slots)
                 sessions_assigned = 0
                 for slot in available_slots:
-                    if slot + consecutive_periods > total_periods:
+                    if slot + consecutive_periods_i > total_periods:
                         continue
                     can_assign = True
-                    for i in range(consecutive_periods):
+                    for i in range(consecutive_periods_i):
                         day = (slot + i) // No_of_periods
                         if (Timetable[slot + i][class_idx] != 0 or
                                 not main_teacher_list[slot + i][teacher_id]["available"] or
@@ -556,7 +631,7 @@ def generate_timetable_backtrack(
                                 if sub["type"] == "lab":
                                     subject_name = sub["name"]
                                     break
-                        for i in range(consecutive_periods):
+                        for i in range(consecutive_periods_i):
                             Timetable[slot + i][class_idx] = f"{subject_name} (Lab {lab_number})"
                             main_teacher_list[slot + i][teacher_id]["available"] = False
                             if teacher_id in class_to_teacher[class_idx]:
@@ -568,8 +643,42 @@ def generate_timetable_backtrack(
                     if sessions_assigned >= num_blocks:
                         break
 
+                # Silent-failure fix: this used to just stop and hand back a
+                # "successful" timetable with fewer lab hours than requested.
+                if sessions_assigned < num_blocks:
+                    subject_name = "Lab"
+                    if class_idx in subject_map and teacher_id in subject_map[class_idx]:
+                        for sub in subject_map[class_idx][teacher_id]:
+                            if sub["type"] == "lab":
+                                subject_name = sub["name"]
+                                break
+                    missing_hours = (num_blocks - sessions_assigned) * consecutive_periods_i
+                    msg = (f"Class {class_idx} — '{subject_name}' (Lab {lab_number}, teacher {teacher_id}): "
+                           f"only placed {sessions_assigned}/{num_blocks} block(s), "
+                           f"{missing_hours}h missing from the timetable.")
+                    logging.error(f"LAB SHORTFALL: {msg}")
+                    lab_shortfalls.append({
+                        "class_idx": class_idx, "teacher_id": teacher_id, "lab_number": lab_number,
+                        "subject": subject_name, "blocks_requested": num_blocks,
+                        "blocks_placed": sessions_assigned, "hours_missing": missing_hours
+                    })
+
+        if lab_shortfalls:
+            try:
+                with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "lab_scheduling_warnings.json"), "w") as f:
+                    json.dump(lab_shortfalls, f, indent=2)
+            except Exception as e:
+                logging.error(f"Could not write lab_scheduling_warnings.json: {e}")
+
     # Build subject → block display name map for backtracker
     subj_to_block_bt = {}
+    # Maps (class_idx, primary_teacher_id) -> (block_name, {sub_teacher_ids}) so that
+    # whenever the backtracker assigns the primary teacher to a single-class split
+    # block, it also locks the co-teaching sub-teacher(s) at that same slot. Without
+    # this, sub-teachers are invisible to the solver's conflict tracking (they never
+    # own a class_entries/subject_map row of their own for the block) and can be
+    # double-booked onto a different class at the exact same period.
+    block_sub_teachers = {}
     if elective_bundles:
         for bundle in elective_bundles:
             bname = bundle.get('name', '')
@@ -637,6 +746,19 @@ def generate_timetable_backtrack(
                             break
                 if assigned_name != "Free" and subject_already_on_day(y, x, assigned_name):
                     continue
+
+                # If this teacher is the "primary" for a single-class split block
+                # and this is in fact that block being assigned, lock the
+                # co-teaching sub-teacher(s) at this same slot too, so the search
+                # can never place them into another class at the same period.
+                locked_subs = []
+                block_entry = block_sub_teachers.get((y, i))
+                if block_entry is not None and block_entry[0] == assigned_name.lower().strip():
+                    for sub_tid in block_entry[1]:
+                        if sub_tid in main_teacher_list[x] and main_teacher_list[x][sub_tid]["available"]:
+                            main_teacher_list[x][sub_tid]["available"] = False
+                            locked_subs.append(sub_tid)
+
                 class_to_teacher[y][i] -= 1
                 main_teacher_list[x][i]["available"] = False
                 if sub_ptr:
@@ -651,6 +773,8 @@ def generate_timetable_backtrack(
                 main_teacher_list[x][i]["available"] = True
                 if sub_ptr:
                     sub_ptr["hours"] += 1
+                for sub_tid in locked_subs:
+                    main_teacher_list[x][sub_tid]["available"] = True
         return False
 
     # ── Step 1: Place labs first (consecutive constraint needs max free space) ──
@@ -708,10 +832,34 @@ def generate_timetable_backtrack(
             # sync needed; the subjects are already constrained by individual hours.
             unique_class_indices = {r["cidx"] for r in resolved}
             if len(unique_class_indices) < 2:
-                # Single-class split — block subject is in the timetable as one row.
-                # Sub-teachers are marked busy via the block subject's teacher.
-                # No cross-class placement needed.
-                logging.info(f"Sync group '{bname}': single-class split — no cross-class sync needed.")
+                # Single-class split — the block subject occupies one row in the
+                # timetable, owned by a single "primary" teacher_id. Register the
+                # OTHER sub-teacher(s) so solve() locks them at whatever slot the
+                # primary teacher ends up assigned to (see block_sub_teachers use
+                # inside solve()).
+                cidx = next(iter(unique_class_indices), -1)
+                block_name = (members[0].get('subject') or '').strip()
+                primary_tid = None
+                if cidx in subject_map and block_name:
+                    for t_id, subs in subject_map[cidx].items():
+                        if any(s["name"].lower().strip() == block_name.lower().strip() and s["type"] == "theory" for s in subs):
+                            primary_tid = t_id
+                            break
+                if primary_tid is None:
+                    logging.warning(f"Sync group '{bname}': single-class split — could not resolve primary teacher for "
+                                     f"'{block_name}' in class {cidx}; sub-teachers NOT locked.")
+                    continue
+                sub_tids = {
+                    int(m['teacherId']) for m in members
+                    if str(m.get('teacherId') or '').lstrip('-').isdigit()
+                    and int(m['teacherId']) != primary_tid
+                }
+                if sub_tids:
+                    block_sub_teachers[(cidx, primary_tid)] = (block_name.lower().strip(), sub_tids)
+                    logging.info(f"Sync group '{bname}': single-class split — will lock {len(sub_tids)} sub-teacher(s) "
+                                 f"whenever '{block_name}' is assigned in class {cidx}.")
+                else:
+                    logging.info(f"Sync group '{bname}': single-class split — no distinct sub-teachers to lock.")
                 continue
 
             # Build teacher_sync_max: how many simultaneous classes each teacher

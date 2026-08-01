@@ -38,15 +38,15 @@
         <p class="text-muted mb-0">Generate your school timetable in three ways</p>
     </div>
 
-    <!-- Option 1: PDF Upload with AI -->
+    <!-- Option 1: PDF/XML Upload with AI -->
     <div class="option-card mb-3">
         <div class="d-flex align-items-center gap-2 mb-2">
             <span style="font-size:1.4rem;">🤖</span>
-            <strong>Upload PDF — AI Extraction</strong>
+            <strong>Upload PDF or XML</strong>
         </div>
-        <p class="text-muted small mb-3">Llama 3.3 reads your schedule PDF and fills everything automatically.</p>
+        <p class="text-muted small mb-3">Upload a timetable PDF for AI extraction, or import an XML timetable directly.</p>
         <form action="/upload-pdf" method="post" enctype="multipart/form-data" id="uploadForm">
-            <input type="file" name="file" class="form-control mb-2" accept=".pdf" required id="pdfFile">
+            <input type="file" name="file" class="form-control mb-2" accept=".pdf,.xml" required id="uploadFile">
             <button type="submit" class="btn btn-primary btn-extract" id="submitBtn">
                 🚀 Start AI Extraction
             </button>
@@ -155,10 +155,43 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 // ── AI Upload ─────────────────────────────────────────────────────────────
-document.getElementById('uploadForm').onsubmit = function() {
-    if (!document.getElementById('pdfFile').value) return false;
+document.getElementById('uploadForm').onsubmit = function(e) {
+    const fileInput = document.getElementById('uploadFile');
+    if (!fileInput.files.length) return false;
+
+    const file = fileInput.files[0];
+    const ext = file.name.split('.').pop().toLowerCase();
+
     document.getElementById('submitBtn').disabled = true;
     document.getElementById('loading').style.display = 'block';
+
+    if (ext === 'xml') {
+        e.preventDefault();
+        const formData = new FormData();
+        formData.append('file', file);
+
+        fetch('/upload-xml', {
+            method: 'POST',
+            body: formData
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'success') {
+                window.location.href = data.redirect;
+            } else {
+                alert(data.message || 'Upload failed.');
+                document.getElementById('submitBtn').disabled = false;
+                document.getElementById('loading').style.display = 'none';
+            }
+        })
+        .catch(() => {
+            alert('Upload failed.');
+            document.getElementById('submitBtn').disabled = false;
+            document.getElementById('loading').style.display = 'none';
+        });
+
+        return false;
+    }
 };
 
 // ── Load Saved File ───────────────────────────────────────────────────────
