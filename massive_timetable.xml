@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<timetable>
+  <config>
+    <days>5</days>
+    <periods>8</periods>
+  </config>
+
+  <classes>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- CSE BRANCH (4 classes)                                             -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    
+    <class name="I-CSE-A">
+      <subject><name>General English</name><teacher>Dr. T1 - English Dept</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>II Language - Telugu</name><teacher>Dr. T2 - Languages</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Problem Solving with Computers</name><teacher>Dr. T3 - CSE</teacher><hours>4</hours><type>theory</type></subject>
+      <subject><name>Calculus</name><teacher>Dr. T4 - Mathematics</teacher><hours>4</hours><type>theory</type></subject>
+      <subject><name>Physics Fundamentals</name><teacher>Dr. T5 - Physics</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Awareness Course</name><teacher>Dr. T6 - Soft Skills</teacher><hours>2</hours><type>theory</type></subject>
+      <subject><name>Software Lab C - Part I</name><teacher>Dr. T3 - CSE</teacher><hours>6</hours><type>lab</type><periods>2</periods></subject>
+      <subject><name>Software Lab Python - I</name><teacher>Dr. T7 - CSE</teacher><hours>2</hours><type>lab</type><periods>1</periods></subject>
+      <subject><name>Multidisciplinary Course</name><teacher>Dr. T8 - Core</teacher><hours>3</hours><type>theory</type></subject>
+    </class>
+
+    <class name="I-CSE-B">
+      <subject><name>General English</name><teacher>Dr. T1 - English Dept</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>II Language - Sanskrit</name><teacher>Dr. T2 - Languages</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Problem Solving with Computers</name><teacher>Dr. T9 - CSE</teacher><hours>4</hours><type>theory</type></subject>
+      <subject><name>Calculus</name><teacher>Dr. T4 - Mathematics</teacher><hours>4</hours><type>theory</type></subject>
+      <subject><name>Physics Fundamentals</name><teacher>Dr. T5 - Physics</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Awareness Course</name><teacher>Dr. T6 - Soft Skills</teacher><hours>2</hours><type>theory</type></subject>
+      <subject><name>Software Lab C - Part I</name><teacher>Dr. T9 - CSE</teacher><hours>6</hours><type>lab</type><periods>2</periods></subject>
+      <subject><name>Software Lab Python - I</name><teacher>Dr. T10 - CSE</teacher><hours>2</hours><type>lab</type><periods>1</periods></subject>
+      <subject><name>Multidisciplinary Course</name><teacher>Dr. T8 - Core</teacher><hours>3</hours><type>theory</type></subject>
+    </class>
+
+    <class name="II-CSE-A">
+      <subject><name>Data Structures</name><teacher>Dr. T11 - CSE</teacher><hours>4</hours><type>theory</type></subject>
+      <subject><name>Digital Logic Design</name><teacher>Dr. T12 - CSE</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Linear Algebra</name><teacher>Dr. T13 - Mathematics</teacher><hours>4</hours><type>theory</type></subject>
+      <subject><name>Physics II</name><teacher>Dr. T14 - Physics</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Chemistry</name><teacher>Dr. T15 - Chemistry</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Data Structures Lab</name><teacher>Dr. T11 - CSE</teacher><hours>4</hours><type>lab</type><periods>2</periods></subject>
+      <subject><name>Digital Logic Lab</name><teacher>Dr. T12 - CSE</teacher><hours>2</hours><type>lab</type><periods>1</periods></subject>
+      <subject><name>Chemistry Lab</name><teacher>Dr. T15 - Chemistry</teacher><hours>2</hours><type>lab</type><periods>1</periods></subject>
+    </class>
+
+    <class name="II-CSE-B">
+      <subject><name>Data Structures</name><teacher>Dr. T16 - CSE</teacher><hours>4</hours><type>theory</type></subject>
+      <subject><name>Digital Logic Design</name><teacher>Dr. T17 - CSE</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Linear Algebra</name><teacher>Dr. T13 - Mathematics</teacher><hours>4</hours><type>theory</type></subject>
+      <subject><name>Physics II</name><teacher>Dr. T14 - Physics</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Chemistry</name><teacher>Dr. T18 - Chemistry</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Data Structures Lab</name><teacher>Dr. T16 - CSE</teacher><hours>4</hours><type>lab</type><periods>2</periods></subject>
+      <subject><name>Digital Logic Lab</name><teacher>Dr. T17 - CSE</teacher><hours>2</hours><type>lab</type><periods>1</periods></subject>
+      <subject><name>Chemistry Lab</name><teacher>Dr. T18 - Chemistry</teacher><hours>2</hours><type>lab</type><periods>1</periods></subject>
+    </class>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- ECE BRANCH (2 classes)                                             -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+    <class name="I-ECE-A">
+      <subject><name>General English</name><teacher>Dr. T1 - English Dept</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>II Language - Hindi</name><teacher>Dr. T2 - Languages</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Engineering Graphics</name><teacher>Dr. T19 - Engineering</teacher><hours>4</hours><type>theory</type></subject>
+      <subject><name>Calculus</name><teacher>Dr. T20 - Mathematics</teacher><hours>4</hours><type>theory</type></subject>
+      <subject><name>Physics Fundamentals</name><teacher>Dr. T5 - Physics</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Basic Circuits and Electronics</name><teacher>Dr. T21 - ECE</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Engineering Graphics Lab</name><teacher>Dr. T19 - Engineering</teacher><hours>4</hours><type>lab</type><periods>2</periods></subject>
+      <subject><name>Circuits Lab</name><teacher>Dr. T21 - ECE</teacher><hours>2</hours><type>lab</type><periods>1</periods></subject>
+      <subject><name>Awareness Course</name><teacher>Dr. T6 - Soft Skills</teacher><hours>2</hours><type>theory</type></subject>
+    </class>
+
+    <class name="I-ECE-B">
+      <subject><name>General English</name><teacher>Dr. T1 - English Dept</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>II Language - Marathi</name><teacher>Dr. T2 - Languages</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Engineering Graphics</name><teacher>Dr. T22 - Engineering</teacher><hours>4</hours><type>theory</type></subject>
+      <subject><name>Calculus</name><teacher>Dr. T20 - Mathematics</teacher><hours>4</hours><type>theory</type></subject>
+      <subject><name>Physics Fundamentals</name><teacher>Dr. T14 - Physics</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Basic Circuits and Electronics</name><teacher>Dr. T23 - ECE</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Engineering Graphics Lab</name><teacher>Dr. T22 - Engineering</teacher><hours>4</hours><type>lab</type><periods>2</periods></subject>
+      <subject><name>Circuits Lab</name><teacher>Dr. T23 - ECE</teacher><hours>2</hours><type>lab</type><periods>1</periods></subject>
+      <subject><name>Awareness Course</name><teacher>Dr. T6 - Soft Skills</teacher><hours>2</hours><type>theory</type></subject>
+    </class>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- MECHANICAL BRANCH (2 classes)                                      -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+    <class name="I-MECH-A">
+      <subject><name>General English</name><teacher>Dr. T1 - English Dept</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>II Language - Kannada</name><teacher>Dr. T2 - Languages</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Engineering Graphics</name><teacher>Dr. T24 - Engineering</teacher><hours>4</hours><type>theory</type></subject>
+      <subject><name>Calculus</name><teacher>Dr. T25 - Mathematics</teacher><hours>4</hours><type>theory</type></subject>
+      <subject><name>Physics Fundamentals</name><teacher>Dr. T26 - Physics</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Engineering Mechanics</name><teacher>Dr. T27 - Mechanical</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Engineering Graphics Lab</name><teacher>Dr. T24 - Engineering</teacher><hours>4</hours><type>lab</type><periods>2</periods></subject>
+      <subject><name>Mechanics Lab</name><teacher>Dr. T27 - Mechanical</teacher><hours>2</hours><type>lab</type><periods>1</periods></subject>
+      <subject><name>Awareness Course</name><teacher>Dr. T6 - Soft Skills</teacher><hours>2</hours><type>theory</type></subject>
+    </class>
+
+    <class name="I-MECH-B">
+      <subject><name>General English</name><teacher>Dr. T1 - English Dept</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>II Language - Tamil</name><teacher>Dr. T2 - Languages</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Engineering Graphics</name><teacher>Dr. T28 - Engineering</teacher><hours>4</hours><type>theory</type></subject>
+      <subject><name>Calculus</name><teacher>Dr. T25 - Mathematics</teacher><hours>4</hours><type>theory</type></subject>
+      <subject><name>Physics Fundamentals</name><teacher>Dr. T26 - Physics</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Engineering Mechanics</name><teacher>Dr. T29 - Mechanical</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Engineering Graphics Lab</name><teacher>Dr. T28 - Engineering</teacher><hours>4</hours><type>lab</type><periods>2</periods></subject>
+      <subject><name>Mechanics Lab</name><teacher>Dr. T29 - Mechanical</teacher><hours>2</hours><type>lab</type><periods>1</periods></subject>
+      <subject><name>Awareness Course</name><teacher>Dr. T6 - Soft Skills</teacher><hours>2</hours><type>theory</type></subject>
+    </class>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- CIVIL BRANCH (2 classes)                                           -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+    <class name="I-CIVIL-A">
+      <subject><name>General English</name><teacher>Dr. T1 - English Dept</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>II Language - Odia</name><teacher>Dr. T2 - Languages</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Engineering Graphics</name><teacher>Dr. T30 - Engineering</teacher><hours>4</hours><type>theory</type></subject>
+      <subject><name>Calculus</name><teacher>Dr. T31 - Mathematics</teacher><hours>4</hours><type>theory</type></subject>
+      <subject><name>Physics Fundamentals</name><teacher>Dr. T32 - Physics</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Building Materials</name><teacher>Dr. T33 - Civil</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Engineering Graphics Lab</name><teacher>Dr. T30 - Engineering</teacher><hours>4</hours><type>lab</type><periods>2</periods></subject>
+      <subject><name>Materials Lab</name><teacher>Dr. T33 - Civil</teacher><hours>2</hours><type>lab</type><periods>1</periods></subject>
+      <subject><name>Awareness Course</name><teacher>Dr. T6 - Soft Skills</teacher><hours>2</hours><type>theory</type></subject>
+    </class>
+
+    <class name="I-CIVIL-B">
+      <subject><name>General English</name><teacher>Dr. T1 - English Dept</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>II Language - Bengali</name><teacher>Dr. T2 - Languages</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Engineering Graphics</name><teacher>Dr. T34 - Engineering</teacher><hours>4</hours><type>theory</type></subject>
+      <subject><name>Calculus</name><teacher>Dr. T31 - Mathematics</teacher><hours>4</hours><type>theory</type></subject>
+      <subject><name>Physics Fundamentals</name><teacher>Dr. T32 - Physics</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Building Materials</name><teacher>Dr. T35 - Civil</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Engineering Graphics Lab</name><teacher>Dr. T34 - Engineering</teacher><hours>4</hours><type>lab</type><periods>2</periods></subject>
+      <subject><name>Materials Lab</name><teacher>Dr. T35 - Civil</teacher><hours>2</hours><type>lab</type><periods>1</periods></subject>
+      <subject><name>Awareness Course</name><teacher>Dr. T6 - Soft Skills</teacher><hours>2</hours><type>theory</type></subject>
+    </class>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- ELECTRICAL BRANCH (2 classes)                                      -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+    <class name="I-EEE-A">
+      <subject><name>General English</name><teacher>Dr. T1 - English Dept</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>II Language - Punjabi</name><teacher>Dr. T2 - Languages</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Engineering Graphics</name><teacher>Dr. T36 - Engineering</teacher><hours>4</hours><type>theory</type></subject>
+      <subject><name>Calculus</name><teacher>Dr. T37 - Mathematics</teacher><hours>4</hours><type>theory</type></subject>
+      <subject><name>Physics Fundamentals</name><teacher>Dr. T38 - Physics</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Electrical Basics</name><teacher>Dr. T39 - Electrical</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Engineering Graphics Lab</name><teacher>Dr. T36 - Engineering</teacher><hours>4</hours><type>lab</type><periods>2</periods></subject>
+      <subject><name>Electrical Lab</name><teacher>Dr. T39 - Electrical</teacher><hours>2</hours><type>lab</type><periods>1</periods></subject>
+      <subject><name>Awareness Course</name><teacher>Dr. T6 - Soft Skills</teacher><hours>2</hours><type>theory</type></subject>
+    </class>
+
+    <class name="I-EEE-B">
+      <subject><name>General English</name><teacher>Dr. T1 - English Dept</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>II Language - Gujarati</name><teacher>Dr. T2 - Languages</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Engineering Graphics</name><teacher>Dr. T40 - Engineering</teacher><hours>4</hours><type>theory</type></subject>
+      <subject><name>Calculus</name><teacher>Dr. T37 - Mathematics</teacher><hours>4</hours><type>theory</type></subject>
+      <subject><name>Physics Fundamentals</name><teacher>Dr. T38 - Physics</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Electrical Basics</name><teacher>Dr. T41 - Electrical</teacher><hours>3</hours><type>theory</type></subject>
+      <subject><name>Engineering Graphics Lab</name><teacher>Dr. T40 - Engineering</teacher><hours>4</hours><type>lab</type><periods>2</periods></subject>
+      <subject><name>Electrical Lab</name><teacher>Dr. T41 - Electrical</teacher><hours>2</hours><type>lab</type><periods>1</periods></subject>
+      <subject><name>Awareness Course</name><teacher>Dr. T6 - Soft Skills</teacher><hours>2</hours><type>theory</type></subject>
+    </class>
+
+  </classes>
+
+</timetable>
