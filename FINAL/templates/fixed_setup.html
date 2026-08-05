@@ -235,11 +235,21 @@
         .sg-type-split  { background:#fde68a; color:#92400e; }
         .sg-type-merged { background:#d1fae5; color:#065f46; }
 
+        /* ── Upload new PDF button (sticky top-right) ── */
+        .upload-new-btn { position: fixed; top: 14px; right: 18px; z-index: 1050;
+                          font-size: 0.8rem; padding: 5px 14px; border-radius: 20px;
+                          box-shadow: 0 2px 8px rgba(0,0,0,.18); }
+
     </style>
     <meta name="periods-count" content="{{ periods }}">
     <meta name="days-count" content="{{ days }}">
 </head>
 <body class="bg-light">
+
+<!-- ── Upload New PDF (always visible) ── -->
+<a href="/" class="btn btn-outline-secondary upload-new-btn">
+    ⬆️ Upload New PDF
+</a>
 
 <div id="loader" class="loading-overlay">
     <div class="text-center">

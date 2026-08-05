@@ -55,7 +55,7 @@
         .class-export-wrap { position: relative; display: inline-block; }
 
         /* ── Subject / Teacher name toggle ── */
-        .toggle-name-btn { font-size: 0.8rem; padding: 4px 12px; border-radius: 20px;
+        .toggle-name-btn { font-size: 0.8rem; padding: 4px 14px; border-radius: 20px;
                            border: 1.5px solid #6c757d; background: white; color: #6c757d;
                            cursor: pointer; transition: all .15s; white-space: nowrap; }
         .toggle-name-btn.showing-teacher { border-color: #0d6efd; background: #e7f1ff; color: #0d6efd; }
@@ -64,11 +64,18 @@
         body.show-teacher-names .slot-label { display: none; }
         body.show-teacher-names .slot-teacher-name { display: inline; }
 
-        /* ── Teacher view download buttons ── */
-        .teacher-dl-btn { font-size: 0.8rem; }
+        /* ── Upload new PDF button (sticky top-right) ── */
+        .upload-new-btn { position: fixed; top: 14px; right: 18px; z-index: 1050;
+                          font-size: 0.8rem; padding: 5px 14px; border-radius: 20px;
+                          box-shadow: 0 2px 8px rgba(0,0,0,.18); }
     </style>
 </head>
 <body class="bg-light p-4">
+
+<!-- ── Upload New PDF (always visible) ── -->
+<a href="/" class="btn btn-outline-secondary upload-new-btn">
+    ⬆️ Upload New PDF
+</a>
 
 <!-- ── Loading overlay ── -->
 <div id="loadingOverlay" class="loading-overlay">
@@ -225,17 +232,17 @@
     ═══════════════════════════════════════ -->
     <div id="view-teacher" style="display:none;">
         <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
-            <label class="fw-semibold me-1 mb-0">Teacher:</label>
+            <label class="fw-semibold mb-0">Teacher:</label>
             <select id="teacherViewSel" class="form-select form-select-sm w-auto d-inline-block"
                     onchange="renderTeacherView()">
                 {% for tname in teacher_names %}
                 <option value="{{ tname }}">{{ tname }}</option>
                 {% endfor %}
             </select>
-            <button class="btn btn-sm btn-outline-success teacher-dl-btn" onclick="triggerTeacherDownload('excel')">
+            <button class="btn btn-sm btn-outline-success" onclick="triggerTeacherDownload('excel')">
                 <i class="bi bi-file-earmark-excel me-1"></i>Excel
             </button>
-            <button class="btn btn-sm btn-outline-danger teacher-dl-btn" onclick="triggerTeacherDownload('pdf')">
+            <button class="btn btn-sm btn-outline-danger" onclick="triggerTeacherDownload('pdf')">
                 <i class="bi bi-file-earmark-pdf me-1"></i>PDF
             </button>
         </div>
@@ -331,26 +338,26 @@
 } | tojson }}</script>
 
 <script>
-// ── Read Flask data from JSON block (no Jinja in JS) ─────────────────────────
-const _fd          = JSON.parse(document.getElementById('flask-data').textContent);
-const TIMETABLE    = _fd.timetable;
-const NUM_CLASSES  = _fd.num_classes;
-const NUM_DAYS     = _fd.num_days;
-const NUM_PERIODS  = _fd.periods_per_day;
-const CLASS_NAMES  = _fd.class_names;
-const TEACHER_MAP  = _fd.teacher_map;
-const DAY_NAMES    = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+// ── Read Flask data ────────────────────────────────────────────────────────────
+const _fd         = JSON.parse(document.getElementById('flask-data').textContent);
+const TIMETABLE   = _fd.timetable;
+const NUM_CLASSES = _fd.num_classes;
+const NUM_DAYS    = _fd.num_days;
+const NUM_PERIODS = _fd.periods_per_day;
+const CLASS_NAMES = _fd.class_names;
+const TEACHER_MAP = _fd.teacher_map;
+const DAY_NAMES   = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 
-// ── View switcher ─────────────────────────────────────────────────────────────
+// ── View switcher ──────────────────────────────────────────────────────────────
 function switchView(v) {
     ['class','teacher','summary'].forEach(id => {
-        document.getElementById('view-' + id).style.display   = v === id ? '' : 'none';
+        document.getElementById('view-' + id).style.display  = v === id ? '' : 'none';
         document.getElementById('tab-'  + id + '-btn').classList.toggle('active', v === id);
     });
     if (v === 'teacher') { renderTeacherView(); loadTeacherCellMap(); }
 }
 
-// ── Teacher view ──────────────────────────────────────────────────────────────
+// ── Teacher view ───────────────────────────────────────────────────────────────
 function renderTeacherView() {
     const sel       = document.getElementById('teacherViewSel');
     const tname     = sel.value;
@@ -365,8 +372,7 @@ function renderTeacherView() {
         html += `<tr><td class="day-header fw-bold">${DAY_NAMES[d] || 'Day '+(d+1)}</td>`;
         for (let p = 0; p < NUM_PERIODS; p++) {
             const si = d * NUM_PERIODS + p;
-            let foundSubject = '';
-            let foundClass   = '';
+            let foundSubject = '', foundClass = '';
             for (let c = 0; c < NUM_CLASSES; c++) {
                 const cell = TIMETABLE[si] ? TIMETABLE[si][c] : '';
                 if (cell && String(cell).toLowerCase() !== 'free' && String(cell) !== '0') {
@@ -392,77 +398,31 @@ function renderTeacherView() {
     container.innerHTML = html;
 }
 
-// ── Teacher timetable download (uses the dedicated teacher routes) ─────────────
+// ── Teacher download — uses dedicated /download/teacher-* routes ───────────────
 function triggerTeacherDownload(format) {
     const tname = document.getElementById('teacherViewSel').value;
     if (!tname) return;
-
     const overlay = document.getElementById('loadingOverlay');
-    const msg     = document.getElementById('overlayMsg');
-    msg.textContent = format === 'excel' ? 'Generating Excel…' : 'Generating PDF…';
+    document.getElementById('overlayMsg').textContent =
+        format === 'excel' ? 'Generating Excel…' : 'Generating PDF…';
     overlay.style.display = 'flex';
-
-    const encoded = encodeURIComponent(tname);
-    const url = `/download/teacher-${format}?teacher=${encoded}`;
-
     const a = document.createElement('a');
-    a.href = url; a.style.display = 'none';
+    a.href = `/download/teacher-${format}?teacher=${encodeURIComponent(tname)}`;
+    a.style.display = 'none';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(() => { overlay.style.display = 'none'; }, 2800);
 }
 
-// ── Subject ↔ Teacher name toggle ─────────────────────────────────────────────
-let teacherCellMap = null;   // { "cidx-si": "TeacherName" }
-let showingTeacherNames = false;
-
-async function loadTeacherCellMap() {
-    if (teacherCellMap) return teacherCellMap;
-    try {
-        const res = await fetch('/api/teacher-cell-map');
-        teacherCellMap = await res.json();
-        // Populate the hidden spans in the DOM
-        document.querySelectorAll('.slot-teacher-name').forEach(span => {
-            const key = `${span.dataset.classIdx}-${span.dataset.slotIndex}`;
-            span.textContent = teacherCellMap[key] || '—';
-        });
-    } catch(e) {
-        console.error('Could not load teacher cell map', e);
-        teacherCellMap = {};
-    }
-    return teacherCellMap;
-}
-
-async function toggleNameView() {
-    const btn = document.getElementById('toggleNameBtn');
-    // Ensure we have the data first
-    await loadTeacherCellMap();
-
-    showingTeacherNames = !showingTeacherNames;
-    document.body.classList.toggle('show-teacher-names', showingTeacherNames);
-    if (showingTeacherNames) {
-        btn.textContent = '📚 Show Subject Names';
-        btn.classList.add('showing-teacher');
-    } else {
-        btn.textContent = '👤 Show Teacher Names';
-        btn.classList.remove('showing-teacher');
-    }
-}
-
-// Build TEACHER_SLOTS lookup: { teacher_name: Set("classIdx-slotIdx") }
+// ── Build TEACHER_SLOTS: { teacher_name: Set("classIdx-slotIdx") } ─────────────
 const TEACHER_SLOTS = {};
-_fd.teacher_names.forEach(tname => { TEACHER_SLOTS[tname] = new Set(); });
-
-// Populate from timetable + teacher_slot_map passed from Flask
+_fd.teacher_names.forEach(t => { TEACHER_SLOTS[t] = new Set(); });
 const TEACHER_SLOT_MAP = _fd.teacher_slot_map;
 Object.entries(TEACHER_SLOT_MAP).forEach(([tname, slots]) => {
     if (!TEACHER_SLOTS[tname]) TEACHER_SLOTS[tname] = new Set();
     slots.forEach(s => TEACHER_SLOTS[tname].add(s));
 });
 
-// ── Bug-2 fix: back-fill any slots that the fuzzy lookup in Flask missed ──────
-// Walk every non-free slot in the timetable. If it already appears in
-// TEACHER_SLOT_MAP for some teacher, good. If not, try to match by subject
-// name prefix across all teachers so TEACHER_SLOTS is always complete.
+// Back-fill any slots the fuzzy lookup in Flask missed
 (function backfillTeacherSlots() {
     const totalSlots = NUM_DAYS * NUM_PERIODS;
     for (let c = 0; c < NUM_CLASSES; c++) {
@@ -470,18 +430,13 @@ Object.entries(TEACHER_SLOT_MAP).forEach(([tname, slots]) => {
             const cell = TIMETABLE[si] ? String(TIMETABLE[si][c]) : '';
             if (!cell || isFreeSlot(cell)) continue;
             const key = `${c}-${si}`;
-            // Already covered?
             const alreadyCovered = Object.values(TEACHER_SLOT_MAP).some(arr => arr.includes(key));
             if (alreadyCovered) continue;
-            // Try to find matching teacher by subject prefix (handles lab names like "Physics (Lab 1)")
             const cellLow = cell.toLowerCase().replace(/\s*\(lab.*\)/, '').trim();
             for (const [tname, slots] of Object.entries(TEACHER_SLOT_MAP)) {
-                // Check if this teacher teaches anything with a matching prefix in any class
                 const teaches = slots.some(s => {
-                    const [sc] = s.split('-');
+                    const [sc, ssi] = s.split('-');
                     if (parseInt(sc) !== c) return false;
-                    // get the subject value at that slot for this class
-                    const [, ssi] = s.split('-');
                     const v = TIMETABLE[parseInt(ssi)] ? String(TIMETABLE[parseInt(ssi)][c]) : '';
                     return v.toLowerCase().replace(/\s*\(lab.*\)/, '').trim() === cellLow;
                 });
@@ -495,28 +450,60 @@ Object.entries(TEACHER_SLOT_MAP).forEach(([tname, slots]) => {
     }
 })();
 
-// ── Download (all classes or single class) ────────────────────────────────────
+// ── Subject ↔ Teacher name toggle ─────────────────────────────────────────────
+let teacherCellMap   = null;
+let showingTeacherNames = false;
+
+async function loadTeacherCellMap() {
+    if (teacherCellMap) return teacherCellMap;
+    try {
+        const res = await fetch('/api/teacher-cell-map');
+        teacherCellMap = await res.json();
+        // Populate the hidden teacher-name spans
+        document.querySelectorAll('.slot-teacher-name').forEach(span => {
+            const key = `${span.dataset.classIdx}-${span.dataset.slotIndex}`;
+            span.textContent = teacherCellMap[key] || '—';
+        });
+    } catch(e) {
+        console.error('Could not load teacher cell map', e);
+        teacherCellMap = {};
+    }
+    return teacherCellMap;
+}
+
+async function toggleNameView() {
+    await loadTeacherCellMap();
+    showingTeacherNames = !showingTeacherNames;
+    document.body.classList.toggle('show-teacher-names', showingTeacherNames);
+    const btn = document.getElementById('toggleNameBtn');
+    if (showingTeacherNames) {
+        btn.textContent = '📚 Show Subject Names';
+        btn.classList.add('showing-teacher');
+    } else {
+        btn.textContent = '👤 Show Teacher Names';
+        btn.classList.remove('showing-teacher');
+    }
+}
+
+// ── Download (class timetable — all or single class) ──────────────────────────
 function triggerDownload(format, classIdx) {
     const modal = document.getElementById('exportModal');
     const bsModal = bootstrap.Modal.getInstance(modal);
     if (bsModal) bsModal.hide();
-
     const overlay = document.getElementById('loadingOverlay');
-    const msg     = document.getElementById('overlayMsg');
-    msg.textContent = format === 'excel' ? 'Generating Excel…' : 'Generating PDF…';
+    document.getElementById('overlayMsg').textContent =
+        format === 'excel' ? 'Generating Excel…' : 'Generating PDF…';
     overlay.style.display = 'flex';
-
     const url = classIdx !== null
         ? `/download/${format}?class_idx=${classIdx}`
         : `/download/${format}`;
-
     const a = document.createElement('a');
     a.href = url; a.style.display = 'none';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(() => { overlay.style.display = 'none'; }, 2800);
 }
 
-// ── Swap slots (highlight mode — chess style, lab-block aware) ───────────────
+// ── Swap slots (highlight mode) ────────────────────────────────────────────────
 let swapSource = null;
 let swapActive = false;
 
@@ -524,41 +511,26 @@ function isFreeSlot(val) {
     const s = String(val).toLowerCase().trim();
     return s === 'free' || s === '0' || val === 0 || (s.startsWith('f') && s.length <= 4);
 }
+function isLabSlot(val) { return String(val).toLowerCase().includes('lab'); }
 
-function isLabSlot(val) {
-    return String(val).toLowerCase().includes('lab');
-}
-
-// Returns the full slot-index array for the lab block containing si.
-// Walks backward to find the start, then forward to find the end.
-// For non-lab: returns [si].
 function getBlock(classIdx, si) {
     const val = TIMETABLE[si] ? String(TIMETABLE[si][classIdx]) : '';
     if (!isLabSlot(val)) return [si];
-
     const day = Math.floor(si / NUM_PERIODS);
-
-    // Walk backward to find block start
     let start = si;
     while (start > day * NUM_PERIODS) {
         const prevSi  = start - 1;
         const prevVal = TIMETABLE[prevSi] ? String(TIMETABLE[prevSi][classIdx]) : '';
-        if (prevVal === val) start = prevSi;
-        else break;
+        if (prevVal === val) start = prevSi; else break;
     }
-
-    // Walk forward to find block end
-    const block = [];
-    let cur = start;
+    const block = []; let cur = start;
     while (Math.floor(cur / NUM_PERIODS) === day && cur < TIMETABLE.length) {
         const curVal = TIMETABLE[cur] ? String(TIMETABLE[cur][classIdx]) : '';
-        if (curVal === val) { block.push(cur); cur++; }
-        else break;
+        if (curVal === val) { block.push(cur); cur++; } else break;
     }
     return block;
 }
 
-// Check a single-slot pair for teacher clash safety
 function checkSwapSafe(classIdx, si1, si2, si1IsFree, si2IsFree) {
     if (si1IsFree && si2IsFree) return false;
     let teacher1 = null, teacher2 = null;
@@ -566,162 +538,96 @@ function checkSwapSafe(classIdx, si1, si2, si1IsFree, si2IsFree) {
         if (slots.includes(`${classIdx}-${si1}`)) teacher1 = tname;
         if (slots.includes(`${classIdx}-${si2}`)) teacher2 = tname;
     });
-    if (si1IsFree) {
-        if (teacher2 && TEACHER_SLOTS[teacher2]) {
-            for (let c = 0; c < NUM_CLASSES; c++) {
-                if (c === classIdx) continue;
-                if (TEACHER_SLOTS[teacher2].has(`${c}-${si1}`)) return false;
-            }
-        }
-        return true;
-    }
-    if (si2IsFree) {
-        if (teacher1 && TEACHER_SLOTS[teacher1]) {
-            for (let c = 0; c < NUM_CLASSES; c++) {
-                if (c === classIdx) continue;
-                if (TEACHER_SLOTS[teacher1].has(`${c}-${si2}`)) return false;
-            }
-        }
-        return true;
-    }
-    if (teacher1 && TEACHER_SLOTS[teacher1]) {
+    const busy = (t, slot) => {
+        if (!t || !TEACHER_SLOTS[t]) return false;
         for (let c = 0; c < NUM_CLASSES; c++) {
             if (c === classIdx) continue;
-            if (TEACHER_SLOTS[teacher1].has(`${c}-${si2}`)) return false;
+            if (TEACHER_SLOTS[t].has(`${c}-${slot}`)) return true;
         }
-    }
-    if (teacher2 && TEACHER_SLOTS[teacher2]) {
-        for (let c = 0; c < NUM_CLASSES; c++) {
-            if (c === classIdx) continue;
-            if (TEACHER_SLOTS[teacher2].has(`${c}-${si1}`)) return false;
-        }
-    }
-    return true;
+        return false;
+    };
+    if (si1IsFree) return !busy(teacher2, si1);
+    if (si2IsFree) return !busy(teacher1, si2);
+    return !busy(teacher1, si2) && !busy(teacher2, si1);
 }
 
-// Check if a block starting at destSi (size = srcBlock.length) is a valid swap target
 function checkBlockSwapSafe(classIdx, srcBlock, destSi) {
     const blockSize  = srcBlock.length;
     const destDay    = Math.floor(destSi / NUM_PERIODS);
     const destPeriod = destSi % NUM_PERIODS;
-
-    // Must not overflow into next day
     if (destPeriod + blockSize > NUM_PERIODS) return false;
-
-    const destBlock = Array.from({ length: blockSize }, (_, i) => destSi + i);
-
-    // Must not overlap with src block
+    const destBlock = Array.from({length: blockSize}, (_, i) => destSi + i);
     if (destBlock.some(s => srcBlock.includes(s))) return false;
-
-    // All dest slots must be on the same day
     if (destBlock.some(s => Math.floor(s / NUM_PERIODS) !== destDay)) return false;
-
-    // Dest block must all have the same subject (can't land in a split block)
     const destVals = destBlock.map(s => TIMETABLE[s] ? String(TIMETABLE[s][classIdx]) : '');
     if (!destVals.every(v => v === destVals[0])) return false;
-
-    // Collect src block teacher and dest block teacher
-    let srcTeacher  = null;
-    let destTeacher = null;
+    let srcTeacher = null, destTeacher = null;
     Object.entries(TEACHER_SLOT_MAP).forEach(([tname, slots]) => {
         if (slots.includes(`${classIdx}-${srcBlock[0]}`))  srcTeacher  = tname;
         if (slots.includes(`${classIdx}-${destBlock[0]}`)) destTeacher = tname;
     });
-
-    // For every src slot: check dest teacher isn't busy there in other classes
-    if (destTeacher && TEACHER_SLOTS[destTeacher]) {
-        for (const si of srcBlock) {
+    const busy = (t, slots) => {
+        if (!t || !TEACHER_SLOTS[t]) return false;
+        return slots.some(si => {
             for (let c = 0; c < NUM_CLASSES; c++) {
                 if (c === classIdx) continue;
-                if (TEACHER_SLOTS[destTeacher].has(`${c}-${si}`)) return false;
+                if (TEACHER_SLOTS[t].has(`${c}-${si}`)) return true;
             }
-        }
-    }
-
-    // For every dest slot: check src teacher isn't busy there in other classes
-    if (srcTeacher && TEACHER_SLOTS[srcTeacher]) {
-        for (const si of destBlock) {
-            for (let c = 0; c < NUM_CLASSES; c++) {
-                if (c === classIdx) continue;
-                if (TEACHER_SLOTS[srcTeacher].has(`${c}-${si}`)) return false;
-            }
-        }
-    }
-
-    return true;
+            return false;
+        });
+    };
+    return !busy(destTeacher, srcBlock) && !busy(srcTeacher, destBlock);
 }
 
 function openSwap(classIdx, day, period) {
     if (swapActive) cancelSwapMode();
-
     let si = day * NUM_PERIODS + period;
-
-    // If this is a lab continuation cell, walk back to find the block start
     const clickedCell = document.getElementById(`cell-${classIdx}-${si}`);
     if (clickedCell && clickedCell.dataset.isContinuation === 'true') {
-        // Walk back on same day until we find the block start
         while (si > day * NUM_PERIODS) {
             const prevSi  = si - 1;
-            const prevVal = TIMETABLE[prevSi] ? String(TIMETABLE[prevSi][classIdx]) : '';
-            const curVal  = TIMETABLE[si]     ? String(TIMETABLE[si][classIdx])     : '';
-            if (prevVal === curVal) { si = prevSi; }
-            else break;
+            if (TIMETABLE[prevSi] && String(TIMETABLE[prevSi][classIdx]) === String(TIMETABLE[si][classIdx]))
+                si = prevSi; else break;
         }
-        // Recalculate period from corrected si
-        period = si % NUM_PERIODS;
-        day    = Math.floor(si / NUM_PERIODS);
+        period = si % NUM_PERIODS; day = Math.floor(si / NUM_PERIODS);
     }
-
     const subject   = TIMETABLE[si] ? String(TIMETABLE[si][classIdx]) : '';
     const srcIsFree = isFreeSlot(subject);
     const srcBlock  = getBlock(classIdx, si);
     const blockSize = srcBlock.length;
-
     swapSource = { classIdx, si, srcIsFree, srcBlock };
     swapActive = true;
-
     const srcLabel  = srcIsFree ? 'Free Period' : subject;
     const blockNote = blockSize > 1 ? ` <span style="color:#92400e;">(${blockSize}-period lab block)</span>` : '';
     document.getElementById('swapBannerLabel').innerHTML =
         `<strong>${srcLabel}</strong>${blockNote} — Class ${CLASS_NAMES[classIdx]}, ${DAY_NAMES[day]||'Day '+(day+1)}, P${period+1}`;
     document.getElementById('swapModeBanner').style.display = 'block';
-
-    // Highlight all cells in the source block yellow
     srcBlock.forEach(s => {
         const cell = document.getElementById(`cell-${classIdx}-${s}`);
         if (cell) cell.classList.add('swap-source-cell');
     });
-
-    // Find valid destination starts
     const highlightedStarts = new Set();
     document.querySelectorAll(`td[data-class-idx="${classIdx}"]`).forEach(td => {
         const si2 = parseInt(td.dataset.slotIndex);
         if (srcBlock.includes(si2)) return;
-
         if (blockSize === 1) {
             const val2       = TIMETABLE[si2] ? String(TIMETABLE[si2][classIdx]) : '';
             const destIsFree = isFreeSlot(val2);
-            // Block if destination is a lab that belongs to a multi-period block
-            if (isLabSlot(val2) && getBlock(classIdx, si2).length > 1) {
-                td.classList.add('swap-blocked-cell'); return;
-            }
+            if (isLabSlot(val2) && getBlock(classIdx, si2).length > 1)
+                { td.classList.add('swap-blocked-cell'); return; }
             if (srcIsFree && destIsFree) { td.classList.add('swap-blocked-cell'); return; }
             if (!srcIsFree && !destIsFree && val2 === subject) { td.classList.add('swap-blocked-cell'); return; }
-            const safe = checkSwapSafe(classIdx, si, si2, srcIsFree, isFreeSlot(val2));
-            td.classList.add(safe ? 'swap-candidate-cell' : 'swap-blocked-cell');
+            td.classList.add(checkSwapSafe(classIdx, si, si2, srcIsFree, isFreeSlot(val2))
+                ? 'swap-candidate-cell' : 'swap-blocked-cell');
         } else {
-            // Only evaluate from the start of a potential dest block
-            // (skip cells that would already be covered by an earlier highlighted start)
-            const alreadyCovered = [...highlightedStarts].some(start =>
-                si2 > start && si2 < start + blockSize);
+            const alreadyCovered = [...highlightedStarts].some(start => si2 > start && si2 < start + blockSize);
             if (alreadyCovered) { td.classList.add('swap-blocked-cell'); return; }
-
             if (checkBlockSwapSafe(classIdx, srcBlock, si2)) {
                 for (let i = 0; i < blockSize; i++) {
-                    const destCell = document.getElementById(`cell-${classIdx}-${si2 + i}`);
-                    if (destCell && !srcBlock.includes(si2 + i)) {
-                        destCell.classList.add('swap-candidate-cell');
-                        destCell.dataset.swapDestStart = si2;
+                    const dc = document.getElementById(`cell-${classIdx}-${si2+i}`);
+                    if (dc && !srcBlock.includes(si2+i)) {
+                        dc.classList.add('swap-candidate-cell');
+                        dc.dataset.swapDestStart = si2;
                     }
                 }
                 highlightedStarts.add(si2);
@@ -733,98 +639,68 @@ function openSwap(classIdx, day, period) {
 }
 
 function cancelSwapMode() {
-    swapActive = false;
-    swapSource = null;
+    swapActive = false; swapSource = null;
     document.getElementById('swapModeBanner').style.display = 'none';
-    document.querySelectorAll('.swap-source-cell, .swap-candidate-cell, .swap-blocked-cell')
+    document.querySelectorAll('.swap-source-cell,.swap-candidate-cell,.swap-blocked-cell')
         .forEach(el => {
-            el.classList.remove('swap-source-cell', 'swap-candidate-cell', 'swap-blocked-cell');
+            el.classList.remove('swap-source-cell','swap-candidate-cell','swap-blocked-cell');
             delete el.dataset.swapDestStart;
         });
 }
 
 function doSwap(classIdx, srcBlock, destBlock) {
-    // 1. Swap each paired slot in TIMETABLE
     srcBlock.forEach((si1, i) => {
         const si2 = destBlock[i];
         const tmp = TIMETABLE[si1][classIdx];
         TIMETABLE[si1][classIdx] = TIMETABLE[si2][classIdx];
         TIMETABLE[si2][classIdx] = tmp;
     });
-
-    // 2. Update TEACHER_SLOT_MAP and TEACHER_SLOTS for all slots
     srcBlock.forEach((si1, i) => {
         const si2 = destBlock[i];
         Object.entries(TEACHER_SLOT_MAP).forEach(([tname, slots]) => {
             const i1 = slots.indexOf(`${classIdx}-${si1}`);
             const i2 = slots.indexOf(`${classIdx}-${si2}`);
-            if (i1 !== -1) {
-                slots[i1] = `${classIdx}-${si2}`;
-                TEACHER_SLOTS[tname].delete(`${classIdx}-${si1}`);
-                TEACHER_SLOTS[tname].add(`${classIdx}-${si2}`);
-            }
-            if (i2 !== -1) {
-                slots[i2] = `${classIdx}-${si1}`;
-                TEACHER_SLOTS[tname].delete(`${classIdx}-${si2}`);
-                TEACHER_SLOTS[tname].add(`${classIdx}-${si1}`);
-            }
+            if (i1 !== -1) { slots[i1] = `${classIdx}-${si2}`; TEACHER_SLOTS[tname].delete(`${classIdx}-${si1}`); TEACHER_SLOTS[tname].add(`${classIdx}-${si2}`); }
+            if (i2 !== -1) { slots[i2] = `${classIdx}-${si1}`; TEACHER_SLOTS[tname].delete(`${classIdx}-${si2}`); TEACHER_SLOTS[tname].add(`${classIdx}-${si1}`); }
         });
     });
-
-    // 3. Persist each pair to server
     srcBlock.forEach((si1, i) => {
         const si2 = destBlock[i];
-        fetch('/swap-slots', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ class_idx: classIdx, slot1: si1, slot2: si2 })
-        }).catch(() => {});
+        fetch('/swap-slots', { method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({class_idx: classIdx, slot1: si1, slot2: si2}) }).catch(()=>{});
     });
-
-    // 4. Cancel swap mode
     cancelSwapMode();
-
-    // 5. Update DOM for all affected slots
     [...srcBlock, ...destBlock].forEach(si => updateCellDOM(classIdx, si));
-
-    // 6. Recompute all conflicts across the whole timetable and repaint
     recomputeConflicts();
 }
 
 function updateCellDOM(classIdx, si) {
     const cell = document.getElementById(`cell-${classIdx}-${si}`);
     if (!cell) return;
-
     const val    = TIMETABLE[si] ? String(TIMETABLE[si][classIdx]) : '';
     const isFree = isFreeSlot(val);
     const isLab  = val.toLowerCase().includes('lab');
-
     cell.querySelector('.slot-label').textContent = isFree ? 'Free' : val;
+    // Also update teacher name span if map is loaded
+    if (teacherCellMap) {
+        const tspan = cell.querySelector('.slot-teacher-name');
+        if (tspan) tspan.textContent = teacherCellMap[`${classIdx}-${si}`] || '—';
+    }
     cell.classList.toggle('free-period', isFree);
     cell.classList.toggle('lab-period',  isLab && !isFree);
     cell.dataset.isFree = isFree ? 'true' : 'false';
-
-    // Recompute continuation: same day, previous slot has same value
-    const day    = Math.floor(si / NUM_PERIODS);
-    const period = si % NUM_PERIODS;
+    const day = Math.floor(si / NUM_PERIODS); const period = si % NUM_PERIODS;
     const prevSi = si - 1;
     const isContinuation = isLab && period > 0 &&
         Math.floor(prevSi / NUM_PERIODS) === day &&
         TIMETABLE[prevSi] && String(TIMETABLE[prevSi][classIdx]) === val;
     cell.dataset.isContinuation = isContinuation ? 'true' : 'false';
-
     const btn = cell.querySelector('.swap-slot-btn');
-    if (btn) {
-        btn.dataset.isFree         = isFree ? 'true' : 'false';
-        btn.dataset.isContinuation = isContinuation ? 'true' : 'false';
-    }
+    if (btn) { btn.dataset.isFree = isFree ? 'true' : 'false'; btn.dataset.isContinuation = isContinuation ? 'true' : 'false'; }
 }
 
-// ── Recompute all conflicts from current TIMETABLE + TEACHER_SLOT_MAP ────────
-// Called after every swap so the red borders and the conflict banner stay accurate.
 function recomputeConflicts() {
-    // Build slot→teacher→[classIdx] from TEACHER_SLOT_MAP
-    const slotTeacherClasses = {}; // key: "tname|si"  value: [classIdx,...]
+    const slotTeacherClasses = {};
     Object.entries(TEACHER_SLOT_MAP).forEach(([tname, slots]) => {
         slots.forEach(s => {
             const [cidxStr, siStr] = s.split('-');
@@ -833,95 +709,54 @@ function recomputeConflicts() {
             slotTeacherClasses[key].push(parseInt(cidxStr));
         });
     });
-
-    // Determine which (classIdx, slotIdx) pairs are in conflict
-    const conflictSet = new Set(); // "classIdx-slotIdx"
+    const conflictSet = new Set();
     Object.entries(slotTeacherClasses).forEach(([key, cidxs]) => {
         if (cidxs.length > 1) {
             const siStr = key.split('|')[1];
             cidxs.forEach(c => conflictSet.add(`${c}-${siStr}`));
         }
     });
-
-    // Update every cell's conflict-cell CSS class
     document.querySelectorAll('td[data-slot-index]').forEach(td => {
-        const ci = td.dataset.classIdx;
-        const si = td.dataset.slotIndex;
-        const inConflict = conflictSet.has(`${ci}-${si}`);
+        const inConflict = conflictSet.has(`${td.dataset.classIdx}-${td.dataset.slotIndex}`);
         td.classList.toggle('conflict-cell', inConflict);
         td.title = inConflict ? '⚠️ Teacher conflict!' : '';
     });
-
-    // Update the conflict count banner
-    const count = conflictSet.size;
+    const count  = conflictSet.size;
     const banner = document.getElementById('conflict-count-banner');
     if (banner) {
-        if (count > 0) {
-            banner.textContent = `⚠️ ${count} conflict(s) detected — highlighted in red above.`;
-            banner.style.display = '';
-        } else {
-            banner.style.display = 'none';
-        }
+        banner.textContent = count > 0 ? `⚠️ ${count} conflict(s) detected — highlighted in red above.` : '';
+        banner.style.display = count > 0 ? '' : 'none';
     }
 }
 
-// ── Delegated event listeners ────────────────────────────────────────────────
+// ── Delegated event listeners ──────────────────────────────────────────────────
 document.addEventListener('click', function(e) {
-    // Per-class export buttons
     const expBtn = e.target.closest('.cls-export-btn');
-    if (expBtn) {
-        triggerDownload(expBtn.dataset.format, parseInt(expBtn.dataset.classIdx));
-        return;
-    }
+    if (expBtn) { triggerDownload(expBtn.dataset.format, parseInt(expBtn.dataset.classIdx)); return; }
 
-    // Clicking a candidate cell while in swap mode → execute swap
     const candidateCell = e.target.closest('.swap-candidate-cell');
     if (candidateCell && swapActive && swapSource) {
-        const si2        = parseInt(candidateCell.dataset.slotIndex);
+        const si2 = parseInt(candidateCell.dataset.slotIndex);
         const { classIdx, srcBlock } = swapSource;
-        const blockSize  = srcBlock.length;
-
-        // Resolve destination block start
-        // For lab blocks, dataset.swapDestStart points to block start
-        const destStart  = candidateCell.dataset.swapDestStart
-            ? parseInt(candidateCell.dataset.swapDestStart)
-            : si2;
-        const destBlock  = Array.from({ length: blockSize }, (_, i) => destStart + i);
-
-        doSwap(classIdx, srcBlock, destBlock);
-        return;
+        const destStart = candidateCell.dataset.swapDestStart ? parseInt(candidateCell.dataset.swapDestStart) : si2;
+        const destBlock = Array.from({length: srcBlock.length}, (_, i) => destStart + i);
+        doSwap(classIdx, srcBlock, destBlock); return;
     }
 
-    // Escape key or clicking outside cancels swap mode
-    // (handled in keydown below)
-
-    // Swap slot links — open swap mode
     const swapBtn = e.target.closest('.swap-slot-btn');
     if (swapBtn) {
-        openSwap(
-            parseInt(swapBtn.dataset.swapClass),
-            parseInt(swapBtn.dataset.swapDay),
-            parseInt(swapBtn.dataset.swapPeriod)
-        );
+        openSwap(parseInt(swapBtn.dataset.swapClass), parseInt(swapBtn.dataset.swapDay), parseInt(swapBtn.dataset.swapPeriod));
         return;
     }
 
-    // Clicking anywhere outside a candidate/source while in swap mode cancels it
-    if (swapActive && !e.target.closest('.swap-source-cell') &&
-        !e.target.closest('#swapModeBanner')) {
+    if (swapActive && !e.target.closest('.swap-source-cell') && !e.target.closest('#swapModeBanner'))
         cancelSwapMode();
-    }
 });
 
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape' && swapActive) cancelSwapMode();
-});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && swapActive) cancelSwapMode(); });
 
 window.onload = function() {
-    // Apply progress bar widths from data-pct attributes (avoids Jinja in style attrs)
-    document.querySelectorAll('.pct-bar').forEach(el => {
-        el.style.width = (el.dataset.pct || 0) + '%';
-    });
+    document.querySelectorAll('.pct-bar').forEach(el => { el.style.width = (el.dataset.pct || 0) + '%'; });
 };
 </script>
 </body>

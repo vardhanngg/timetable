@@ -675,20 +675,16 @@ def download_pdf():
         }), 500
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  TEACHER TIMETABLE HELPERS
-# ─────────────────────────────────────────────────────────────────────────────
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  TEACHER TIMETABLE HELPER
+# ─────────────────────────────────────────────────────────────────────────────
 def _build_teacher_timetable(teacher_name, timetable, stored, days, periods, num_classes):
+    """Return a days×periods grid for one teacher.
+    Each cell: "" (free) or "SubjectName\n(ClassName)".
     """
-    Build a days×periods grid for one teacher.
-    Each cell is either "" (not teaching) or "SubjectName\n(ClassName)".
-    Returns list-of-lists[day][period].
-    """
-    organized = stored.get("organized", {})
+    organized  = stored.get("organized", {})
     class_keys = list(organized.keys())
-
-    # subject → teacher lookup per class (same logic as success_summary)
     subj_teacher = {}
     for cidx, cname in enumerate(class_keys):
         for t in organized[cname]:
@@ -699,7 +695,6 @@ def _build_teacher_timetable(teacher_name, timetable, stored, days, periods, num
                 subj_teacher[(cidx, stripped)] = t["teacher"]
 
     grid = [["" for _ in range(periods)] for _ in range(days)]
-
     for day in range(days):
         for p in range(periods):
             si = day * periods + p
@@ -710,11 +705,10 @@ def _build_teacher_timetable(teacher_name, timetable, stored, days, periods, num
                     continue
                 if not cell or cell == 0 or str(cell).strip().lower() in ("", "free", "0"):
                     continue
-                cell_str = str(cell).strip()
+                cell_str  = str(cell).strip()
                 cell_norm = re.sub(r"\s*\(lab[^)]*\)", "", cell_str, flags=re.IGNORECASE).lower().strip()
-                key_exact = (cidx, cell_str.lower().strip())
-                key_norm  = (cidx, cell_norm)
-                tname = subj_teacher.get(key_exact) or subj_teacher.get(key_norm)
+                tname = (subj_teacher.get((cidx, cell_str.lower().strip())) or
+                         subj_teacher.get((cidx, cell_norm)))
                 if not tname:
                     for (c2, subj), tn in subj_teacher.items():
                         if c2 == cidx and cell_norm.startswith(subj[:6]):
@@ -728,7 +722,7 @@ def _build_teacher_timetable(teacher_name, timetable, stored, days, periods, num
 
 @app.route("/download/teacher-pdf")
 def download_teacher_pdf():
-    """Download a single teacher's timetable as PDF. ?teacher=<name>"""
+    """Download one teacher's timetable as PDF. ?teacher=<name>"""
     try:
         from reportlab.lib.pagesizes import A4, landscape
         from reportlab.lib import colors
@@ -739,7 +733,7 @@ def download_teacher_pdf():
 
         teacher_name = request.args.get("teacher", "").strip()
         if not teacher_name:
-            return "No teacher specified. Add ?teacher=<name> to the URL.", 400
+            return "No teacher specified (?teacher=Name)", 400
 
         for fn in ("generated_timetable.json", "generated_metadata.json", "last_extraction.json"):
             if not os.path.exists(spath(fn)):
@@ -752,28 +746,24 @@ def download_teacher_pdf():
         days = meta["days"]; periods = meta["periods"]; num_classes = meta["num_classes"]
         _day_names = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
         day_labels = [_day_names[i] if i < len(_day_names) else f"Day {i+1}" for i in range(days)]
-
         grid = _build_teacher_timetable(teacher_name, timetable, stored, days, periods, num_classes)
 
-        styles = getSampleStyleSheet()
+        styles  = getSampleStyleSheet()
         title_s = ParagraphStyle("ttl", parent=styles["Heading2"], alignment=TA_CENTER, spaceAfter=6)
         cell_s  = ParagraphStyle("cel", parent=styles["Normal"], fontSize=7, leading=9, alignment=TA_CENTER)
         free_s  = ParagraphStyle("fre", parent=styles["Normal"], fontSize=7, leading=9, alignment=TA_CENTER,
                                  textColor=colors.HexColor("#6C757D"))
 
-        NAVY  = colors.HexColor("#1F3864")
-        LBLUE = colors.HexColor("#D9E1F2")
-        YFREE = colors.HexColor("#FFF9C4")
-        WHITE = colors.white
+        NAVY  = colors.HexColor("#1F3864"); LBLUE = colors.HexColor("#D9E1F2")
+        YFREE = colors.HexColor("#FFF9C4"); WHITE = colors.white
 
         output = io.BytesIO()
         doc = SimpleDocTemplate(output, pagesize=landscape(A4),
                                 leftMargin=1.5*cm, rightMargin=1.5*cm,
                                 topMargin=1.5*cm,  bottomMargin=1.5*cm)
-
         story = [Paragraph(f"Teacher Timetable — {teacher_name}", title_s)]
         header = ["Day"] + [f"P{p+1}" for p in range(periods)]
-        rows = [header]
+        rows   = [header]
         free_cells = []
         for d in range(days):
             row = [Paragraph(day_labels[d], cell_s)]
@@ -789,45 +779,36 @@ def download_teacher_pdf():
         col_w = (27 * cm) / (periods + 1)
         t = Table(rows, colWidths=[col_w] * (periods + 1), repeatRows=1)
         ts = TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0),  NAVY),
-            ("TEXTCOLOR",  (0, 0), (-1, 0),  WHITE),
-            ("FONTNAME",   (0, 0), (-1, 0),  "Helvetica"),
-            ("FONTSIZE",   (0, 0), (-1, 0),  9),
-            ("BACKGROUND", (0, 1), (0, -1),  LBLUE),
-            ("FONTNAME",   (0, 1), (0, -1),  "Helvetica"),
-            ("ALIGN",      (0, 0), (-1, -1), "CENTER"),
-            ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
-            ("FONTSIZE",   (1, 1), (-1, -1), 8),
-            ("ROWHEIGHT",  (0, 1), (-1, -1), 36),
-            ("GRID",       (0, 0), (-1, -1), 0.5, colors.grey),
+            ("BACKGROUND", (0,0),(-1,0), NAVY), ("TEXTCOLOR",(0,0),(-1,0), WHITE),
+            ("FONTNAME",   (0,0),(-1,0), "Helvetica"), ("FONTSIZE",(0,0),(-1,0), 9),
+            ("BACKGROUND", (0,1),(0,-1), LBLUE), ("FONTNAME",(0,1),(0,-1), "Helvetica"),
+            ("ALIGN",  (0,0),(-1,-1),"CENTER"), ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+            ("FONTSIZE",(1,1),(-1,-1),8), ("ROWHEIGHT",(0,1),(-1,-1),36),
+            ("GRID",(0,0),(-1,-1),0.5,colors.grey),
         ])
         for (col_i, row_i) in free_cells:
-            ts.add("BACKGROUND", (col_i, row_i), (col_i, row_i), YFREE)
+            ts.add("BACKGROUND",(col_i,row_i),(col_i,row_i), YFREE)
         t.setStyle(ts)
-        story.append(t)
-        story.append(Spacer(1, 0.8 * cm))
-
-        doc.build(story)
-        output.seek(0)
-        safe_name = re.sub(r"[^\w\-]", "_", teacher_name)
+        story.append(t); story.append(Spacer(1, 0.8*cm))
+        doc.build(story); output.seek(0)
+        safe = re.sub(r"[^\w\-]", "_", teacher_name)
         return send_file(output, mimetype="application/pdf", as_attachment=True,
-                         download_name=f"timetable_teacher_{safe_name}.pdf")
-
+                         download_name=f"timetable_teacher_{safe}.pdf")
     except Exception as e:
         print(f"TEACHER PDF ERROR: {traceback.format_exc()}")
-        return jsonify({"status": "error", "message": f"Teacher PDF failed: {str(e)}"}), 500
+        return jsonify({"status":"error","message":str(e)}), 500
 
 
 @app.route("/download/teacher-excel")
 def download_teacher_excel():
-    """Download a single teacher's timetable as Excel. ?teacher=<name>"""
+    """Download one teacher's timetable as Excel. ?teacher=<name>"""
     try:
         import openpyxl
         from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 
         teacher_name = request.args.get("teacher", "").strip()
         if not teacher_name:
-            return "No teacher specified. Add ?teacher=<name> to the URL.", 400
+            return "No teacher specified (?teacher=Name)", 400
 
         for fn in ("generated_timetable.json", "generated_metadata.json", "last_extraction.json"):
             if not os.path.exists(spath(fn)):
@@ -840,7 +821,6 @@ def download_teacher_excel():
         days = meta["days"]; periods = meta["periods"]; num_classes = meta["num_classes"]
         _day_names = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
         day_labels = [_day_names[i] if i < len(_day_names) else f"Day {i+1}" for i in range(days)]
-
         grid = _build_teacher_timetable(teacher_name, timetable, stored, days, periods, num_classes)
 
         def hdr_fill():  return PatternFill("solid", fgColor="1F3864")
@@ -849,78 +829,55 @@ def download_teacher_excel():
         def per_font():  return Font(bold=True, size=10)
         def free_fill(): return PatternFill("solid", fgColor="FFF9C4")
         def busy_fill(): return PatternFill("solid", fgColor="E8F5E9")
-        def norm_fill(): return PatternFill("solid", fgColor="FFFFFF")
         def mk_border(): return Border(left=Side(style="thin"), right=Side(style="thin"),
                                        top=Side(style="thin"),  bottom=Side(style="thin"))
         def mk_center(): return Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = teacher_name[:31]
-
-        ws.row_dimensions[1].height = 26
-        ws.column_dimensions["A"].width = 14
+        wb = openpyxl.Workbook(); ws = wb.active; ws.title = teacher_name[:31]
+        ws.row_dimensions[1].height = 26; ws.column_dimensions["A"].width = 14
         col_letters = list("BCDEFGHIJKLMNOPQRSTUVWXYZ")
         for p in range(periods):
-            if p < len(col_letters):
-                ws.column_dimensions[col_letters[p]].width = 26
+            if p < len(col_letters): ws.column_dimensions[col_letters[p]].width = 26
 
         for col, label in enumerate(["Day"] + [f"P{p+1}" for p in range(periods)]):
-            c = ws.cell(row=1, column=col + 1, value=label)
-            c.fill = hdr_fill(); c.font = hdr_font()
-            c.alignment = mk_center(); c.border = mk_border()
+            c = ws.cell(row=1, column=col+1, value=label)
+            c.fill = hdr_fill(); c.font = hdr_font(); c.alignment = mk_center(); c.border = mk_border()
 
         for d in range(days):
-            row_num = d + 2
-            ws.row_dimensions[row_num].height = 48
-            dc = ws.cell(row=row_num, column=1, value=day_labels[d])
-            dc.fill = per_fill(); dc.font = per_font()
-            dc.alignment = mk_center(); dc.border = mk_border()
+            rn = d + 2; ws.row_dimensions[rn].height = 48
+            dc = ws.cell(row=rn, column=1, value=day_labels[d])
+            dc.fill = per_fill(); dc.font = per_font(); dc.alignment = mk_center(); dc.border = mk_border()
             for p in range(periods):
                 text = grid[d][p]
-                pc = ws.cell(row=row_num, column=p + 2, value=text if text else "Free")
+                pc = ws.cell(row=rn, column=p+2, value=text if text else "Free")
                 pc.fill = busy_fill() if text else free_fill()
                 pc.alignment = mk_center(); pc.border = mk_border()
-                pc.font = Font(size=9, italic=(not text),
-                               color="6C757D" if not text else "000000")
+                pc.font = Font(size=9, italic=(not text), color="6C757D" if not text else "000000")
 
-        output = io.BytesIO()
-        wb.save(output)
-        output.seek(0)
-        safe_name = re.sub(r"[^\w\-]", "_", teacher_name)
-        return send_file(
-            output,
+        output = io.BytesIO(); wb.save(output); output.seek(0)
+        safe = re.sub(r"[^\w\-]", "_", teacher_name)
+        return send_file(output,
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            as_attachment=True,
-            download_name=f"timetable_teacher_{safe_name}.xlsx"
-        )
-
+            as_attachment=True, download_name=f"timetable_teacher_{safe}.xlsx")
     except Exception as e:
         print(f"TEACHER EXCEL ERROR: {traceback.format_exc()}")
-        return jsonify({"status": "error", "message": f"Teacher Excel failed: {str(e)}"}), 500
+        return jsonify({"status":"error","message":str(e)}), 500
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  TEACHER SLOT MAP API — used by the timetable toggle (subject ↔ teacher name)
-# ─────────────────────────────────────────────────────────────────────────────
 @app.route("/api/teacher-cell-map")
 def teacher_cell_map():
-    """
-    Returns a JSON mapping: { "cidx-slotIdx": "TeacherName", ... }
-    for every non-free cell in the timetable, so the frontend can
-    toggle between showing subject names and teacher names.
-    """
+    """Return {'cidx-slotIdx': 'TeacherName'} for every non-free cell."""
     try:
         for fn in ("generated_timetable.json", "generated_metadata.json", "last_extraction.json"):
             if not os.path.exists(spath(fn)):
-                return jsonify({}), 200   # silently return empty if no timetable yet
+                return jsonify({}), 200
 
         with open(spath("generated_timetable.json")) as f: timetable = json.load(f)
         with open(spath("generated_metadata.json"))  as f: meta      = json.load(f)
         with open(spath("last_extraction.json"))      as f: stored    = json.load(f)
 
         days = meta["days"]; periods = meta["periods"]; num_classes = meta["num_classes"]
-        organized = stored.get("organized", {})
+        organized  = stored.get("organized", {})
         class_keys = list(organized.keys())
 
         subj_teacher = {}
@@ -937,24 +894,19 @@ def teacher_cell_map():
             for p in range(periods):
                 si = day * periods + p
                 for cidx in range(num_classes):
-                    try:
-                        cell = timetable[si][cidx]
-                    except (IndexError, KeyError, TypeError):
-                        continue
-                    if not cell or cell == 0 or str(cell).strip().lower() in ("", "free", "0"):
-                        continue
-                    cell_str = str(cell).strip()
+                    try: cell = timetable[si][cidx]
+                    except (IndexError, KeyError, TypeError): continue
+                    if not cell or cell == 0 or str(cell).strip().lower() in ("","free","0"): continue
+                    cell_str  = str(cell).strip()
                     cell_norm = re.sub(r"\s*\(lab[^)]*\)", "", cell_str, flags=re.IGNORECASE).lower().strip()
                     tname = (subj_teacher.get((cidx, cell_str.lower().strip())) or
                              subj_teacher.get((cidx, cell_norm)))
                     if not tname:
                         for (c2, subj), tn in subj_teacher.items():
                             if c2 == cidx and cell_norm.startswith(subj[:6]):
-                                tname = tn
-                                break
+                                tname = tn; break
                     if tname:
                         cell_map[f"{cidx}-{si}"] = tname
-
         return jsonify(cell_map)
     except Exception as e:
         print(f"TEACHER CELL MAP ERROR: {traceback.format_exc()}")
@@ -1299,24 +1251,22 @@ def load_verify():
         merge_groups = payload.get("merge_groups", [])
         twd          = payload.get("temp_web_data")  # may be None for manual entry
 
-        # Ensure every row retains ALL fields so nothing is silently dropped
-        # when the user saves state and reloads (lab_no, continuous, total_hours,
-        # total_periods were previously lost because only a subset of keys was
-        # forwarded from the frontend payload).
+        # Preserve every field in each row so lab_no, continuous, total_hours,
+        # total_periods etc. are not silently lost on save→load.
         sanitised_rows = []
         for row in rows:
             sanitised_rows.append({
-                "class":           row.get("class", ""),
-                "subject":         row.get("subject", ""),
-                "teacher":         row.get("teacher", ""),
-                "type":            row.get("type", "Theory"),
-                "periods":         row.get("periods", 0),
-                "total_hours":     row.get("total_hours", row.get("periods", 0)),
-                "total_periods":   row.get("total_periods", row.get("periods", 0)),
-                "continuous":      row.get("continuous", 1),
-                "lab_no":          row.get("lab_no", 0),
-                "split_block":     row.get("split_block", ""),
-                "split_children":  row.get("split_children", []),
+                "class":          row.get("class", ""),
+                "subject":        row.get("subject", ""),
+                "teacher":        row.get("teacher", ""),
+                "type":           row.get("type", "Theory"),
+                "periods":        row.get("periods", 0),
+                "total_hours":    row.get("total_hours", row.get("periods", 0)),
+                "total_periods":  row.get("total_periods", row.get("periods", 0)),
+                "continuous":     row.get("continuous", 1),
+                "lab_no":         row.get("lab_no", 0),
+                "split_block":    row.get("split_block", ""),
+                "split_children": row.get("split_children", []),
             })
 
         verify_session = {
@@ -1368,11 +1318,14 @@ def edit_schedule():
         if not cn.startswith("Class "):
             row["class"] = "Class " + cn
 
+    labs = int(vs.get("labs", 2))
+    
     return render_template(
         "view_simple.html",
         rows=rows,
         extracted_days=days,
         extracted_periods=periods,
+        extracted_labs=labs,
         merge_groups_json=_json.dumps(merge_groups),
     )
 

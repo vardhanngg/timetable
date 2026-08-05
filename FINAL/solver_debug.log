@@ -1,0 +1,6 @@
+2026-08-05 11:57:05,776 - INFO - OR-Tools loaded successfully
+2026-08-05 11:57:06,203 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://10.0.3.115:5000
+2026-08-05 11:57:06,203 - INFO - [33mPress CTRL+C to quit[0m
