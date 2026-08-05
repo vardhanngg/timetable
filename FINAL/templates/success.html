@@ -53,6 +53,19 @@
 
         /* ── Per-class export dropdown ── */
         .class-export-wrap { position: relative; display: inline-block; }
+
+        /* ── Subject / Teacher name toggle ── */
+        .toggle-name-btn { font-size: 0.8rem; padding: 4px 12px; border-radius: 20px;
+                           border: 1.5px solid #6c757d; background: white; color: #6c757d;
+                           cursor: pointer; transition: all .15s; white-space: nowrap; }
+        .toggle-name-btn.showing-teacher { border-color: #0d6efd; background: #e7f1ff; color: #0d6efd; }
+        .toggle-name-btn:hover { border-color: #0d6efd; color: #0d6efd; }
+        .slot-teacher-name { display: none; font-size: 0.78rem; color: #1d4ed8; font-weight: 600; }
+        body.show-teacher-names .slot-label { display: none; }
+        body.show-teacher-names .slot-teacher-name { display: inline; }
+
+        /* ── Teacher view download buttons ── */
+        .teacher-dl-btn { font-size: 0.8rem; }
     </style>
 </head>
 <body class="bg-light p-4">
@@ -125,6 +138,13 @@
     ═══════════════════════════════════════ -->
     <div id="view-class">
 
+        <!-- Subject ↔ Teacher name toggle -->
+        <div class="d-flex justify-content-end mb-2">
+            <button class="toggle-name-btn" id="toggleNameBtn" onclick="toggleNameView()">
+                👤 Show Teacher Names
+            </button>
+        </div>
+
         {% set day_names = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"] %}
         {% set conflict_set = conflicts if conflicts is defined else [] %}
 
@@ -174,6 +194,7 @@
                                 data-is-continuation="{{ 'true' if is_continuation else 'false' }}"
                                 title="{{ '⚠️ Teacher conflict!' if is_conflict else '' }}">
                                 <span class="slot-label">{{ "Free" if is_free else slot_data }}</span>
+                                <span class="slot-teacher-name" data-class-idx="{{ class_idx }}" data-slot-index="{{ slot_index }}"></span>
                                 <br><small class="swap-slot-btn text-muted"
                                     data-swap-class="{{ class_idx }}"
                                     data-swap-day="{{ day }}"
@@ -203,13 +224,20 @@
          VIEW 2 — BY TEACHER
     ═══════════════════════════════════════ -->
     <div id="view-teacher" style="display:none;">
-        <div class="mb-3">
+        <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+            <label class="fw-semibold me-1 mb-0">Teacher:</label>
             <select id="teacherViewSel" class="form-select form-select-sm w-auto d-inline-block"
                     onchange="renderTeacherView()">
                 {% for tname in teacher_names %}
                 <option value="{{ tname }}">{{ tname }}</option>
                 {% endfor %}
             </select>
+            <button class="btn btn-sm btn-outline-success teacher-dl-btn" onclick="triggerTeacherDownload('excel')">
+                <i class="bi bi-file-earmark-excel me-1"></i>Excel
+            </button>
+            <button class="btn btn-sm btn-outline-danger teacher-dl-btn" onclick="triggerTeacherDownload('pdf')">
+                <i class="bi bi-file-earmark-pdf me-1"></i>PDF
+            </button>
         </div>
         <div id="teacherViewTable"></div>
     </div>
@@ -319,7 +347,7 @@ function switchView(v) {
         document.getElementById('view-' + id).style.display   = v === id ? '' : 'none';
         document.getElementById('tab-'  + id + '-btn').classList.toggle('active', v === id);
     });
-    if (v === 'teacher') renderTeacherView();
+    if (v === 'teacher') { renderTeacherView(); loadTeacherCellMap(); }
 }
 
 // ── Teacher view ──────────────────────────────────────────────────────────────
@@ -328,7 +356,6 @@ function renderTeacherView() {
     const tname     = sel.value;
     const container = document.getElementById('teacherViewTable');
 
-    // Build teacher's schedule: for each (day, period) across all classes
     let html = `<table class="table table-bordered text-center shadow-sm">
         <thead class="table-dark"><tr><th>Day</th>`;
     for (let p = 0; p < NUM_PERIODS; p++) html += `<th>P${p+1}</th>`;
@@ -338,19 +365,23 @@ function renderTeacherView() {
         html += `<tr><td class="day-header fw-bold">${DAY_NAMES[d] || 'Day '+(d+1)}</td>`;
         for (let p = 0; p < NUM_PERIODS; p++) {
             const si = d * NUM_PERIODS + p;
-            let found = '';
+            let foundSubject = '';
+            let foundClass   = '';
             for (let c = 0; c < NUM_CLASSES; c++) {
                 const cell = TIMETABLE[si] ? TIMETABLE[si][c] : '';
                 if (cell && String(cell).toLowerCase() !== 'free' && String(cell) !== '0') {
-                    // Check if this cell belongs to this teacher via teacher_map
-                    // We match by checking TEACHER_SLOTS data
                     if (TEACHER_SLOTS[tname] && TEACHER_SLOTS[tname].has(`${c}-${si}`)) {
-                        found = `<strong>Class ${CLASS_NAMES[c]}</strong><br><small>${cell}</small>`;
+                        foundSubject = String(cell);
+                        foundClass   = CLASS_NAMES[c];
+                        break;
                     }
                 }
             }
-            if (found) {
-                html += `<td class="slot" style="background:#e8f5e9;">${found}</td>`;
+            if (foundSubject) {
+                html += `<td class="slot" style="background:#e8f5e9;">
+                    <strong>${foundSubject}</strong><br>
+                    <small class="text-muted">Class ${foundClass}</small>
+                </td>`;
             } else {
                 html += `<td class="slot free-period text-muted fst-italic">Free</td>`;
             }
@@ -359,6 +390,62 @@ function renderTeacherView() {
     }
     html += '</tbody></table>';
     container.innerHTML = html;
+}
+
+// ── Teacher timetable download (uses the dedicated teacher routes) ─────────────
+function triggerTeacherDownload(format) {
+    const tname = document.getElementById('teacherViewSel').value;
+    if (!tname) return;
+
+    const overlay = document.getElementById('loadingOverlay');
+    const msg     = document.getElementById('overlayMsg');
+    msg.textContent = format === 'excel' ? 'Generating Excel…' : 'Generating PDF…';
+    overlay.style.display = 'flex';
+
+    const encoded = encodeURIComponent(tname);
+    const url = `/download/teacher-${format}?teacher=${encoded}`;
+
+    const a = document.createElement('a');
+    a.href = url; a.style.display = 'none';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => { overlay.style.display = 'none'; }, 2800);
+}
+
+// ── Subject ↔ Teacher name toggle ─────────────────────────────────────────────
+let teacherCellMap = null;   // { "cidx-si": "TeacherName" }
+let showingTeacherNames = false;
+
+async function loadTeacherCellMap() {
+    if (teacherCellMap) return teacherCellMap;
+    try {
+        const res = await fetch('/api/teacher-cell-map');
+        teacherCellMap = await res.json();
+        // Populate the hidden spans in the DOM
+        document.querySelectorAll('.slot-teacher-name').forEach(span => {
+            const key = `${span.dataset.classIdx}-${span.dataset.slotIndex}`;
+            span.textContent = teacherCellMap[key] || '—';
+        });
+    } catch(e) {
+        console.error('Could not load teacher cell map', e);
+        teacherCellMap = {};
+    }
+    return teacherCellMap;
+}
+
+async function toggleNameView() {
+    const btn = document.getElementById('toggleNameBtn');
+    // Ensure we have the data first
+    await loadTeacherCellMap();
+
+    showingTeacherNames = !showingTeacherNames;
+    document.body.classList.toggle('show-teacher-names', showingTeacherNames);
+    if (showingTeacherNames) {
+        btn.textContent = '📚 Show Subject Names';
+        btn.classList.add('showing-teacher');
+    } else {
+        btn.textContent = '👤 Show Teacher Names';
+        btn.classList.remove('showing-teacher');
+    }
 }
 
 // Build TEACHER_SLOTS lookup: { teacher_name: Set("classIdx-slotIdx") }
