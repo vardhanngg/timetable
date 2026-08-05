@@ -5,6 +5,7 @@ import csv
 import uuid
 import time
 import re
+import traceback
 from flask import Flask, render_template, request, redirect, url_for, jsonify, session
 import io
 from flask import send_file
@@ -13,6 +14,52 @@ from solver import generate_timetable, generate_timetable_with_retry
 from adapter import build_solver_inputs_from_classes
 from extractor import get_solver_data_from_pdf 
 import xml.etree.ElementTree as ET
+
+# ============================================================================
+# FONT REGISTRATION FOR RENDER COMPATIBILITY
+# ============================================================================
+# When deployed to Render, the container is minimal and doesn't have system
+# fonts installed by default. This function attempts to register TrueType fonts
+# that will be installed by the Dockerfile, so ReportLab can use them.
+# ============================================================================
+
+def register_fonts():
+    """
+    Register TrueType fonts that are available in Render's container.
+    ReportLab defaults to PostScript fonts which don't exist in minimal containers.
+    This function is called on app startup.
+    """
+    try:
+        from reportlab.pdfbase import pdfmetrics, ttfonts
+        
+        font_paths = [
+            ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 'DejaVu'),
+            ('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 'DejaVu-Bold'),
+            ('/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf', 'LiberationSans'),
+            ('/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf', 'LiberationSans-Bold'),
+        ]
+        
+        for font_path, font_name in font_paths:
+            if os.path.exists(font_path):
+                try:
+                    pdfmetrics.registerFont(ttfonts.TTFont(font_name, font_path))
+                    print(f"✓ Registered font: {font_name}")
+                except Exception as e:
+                    print(f"⚠ Could not register {font_name}: {e}")
+            else:
+                pass  # Font file not installed yet, OK for local development
+    except ImportError:
+        pass  # reportlab will be imported in routes, no need to fail here
+    except Exception as e:
+        print(f"⚠ Error registering fonts: {e}")
+
+# Register fonts on startup
+register_fonts()
+
+# ============================================================================
+# FLASK APP SETUP
+# ============================================================================
+
 def parse_xml_timetable(xml_path):
     """Parse XML timetable file into the PDF extraction format"""
     try:
@@ -151,6 +198,21 @@ except ImportError:
     print("   Without OR-Tools, solving may take 3-5 minutes or fail on large inputs.")
 
 
+# ============================================================================
+# HEALTH CHECK ENDPOINT (NEW - for monitoring)
+# ============================================================================
+
+@app.route("/health")
+def health():
+    """
+    Health check endpoint — returns 200 if app is running and responsive.
+    Used by Render to verify deployment and auto-restart if needed.
+    """
+    try:
+        return jsonify({"status": "ok", "service": "timetable-generator"}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 @app.route("/")
 def home():
@@ -280,20 +342,6 @@ def generate():
         return f"<h3>Data Processing Error: {str(e)}</h3>"
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 #  HELPER — resolve one cell value from the timetable
 #  Timetable structure: timetable[slot_index][class_idx]
@@ -327,282 +375,304 @@ def _cell_text(timetable, class_idx, day, period, periods_per_day):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  EXCEL DOWNLOAD
+#  EXCEL DOWNLOAD (FIXED for Render)
 # ─────────────────────────────────────────────────────────────────────────────
 @app.route("/download/excel")
 def download_excel():
-    import openpyxl
-    from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+    """
+    Generate and download timetable as Excel file.
+    FIXED: Added error handling and logging for Render debugging.
+    """
+    try:
+        import openpyxl
+        from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 
-    if not os.path.exists(spath("generated_timetable.json")) or \
-       not os.path.exists(spath("generated_metadata.json")) or \
-       not os.path.exists(spath("last_extraction.json")):
-        return "No timetable found. Please generate one first.", 404
+        if not os.path.exists(spath("generated_timetable.json")) or \
+           not os.path.exists(spath("generated_metadata.json")) or \
+           not os.path.exists(spath("last_extraction.json")):
+            return "No timetable found. Please generate one first.", 404
 
-    with open(spath("generated_timetable.json"))  as f: timetable   = json.load(f)
-    with open(spath("generated_metadata.json"))   as f: meta        = json.load(f)
-    with open(spath("last_extraction.json"))        as f: stored      = json.load(f)
+        with open(spath("generated_timetable.json"))  as f: timetable   = json.load(f)
+        with open(spath("generated_metadata.json"))   as f: meta        = json.load(f)
+        with open(spath("last_extraction.json"))        as f: stored      = json.load(f)
 
-    days        = meta["days"]
-    periods     = meta["periods"]
-    num_classes = meta["num_classes"]
+        days        = meta["days"]
+        periods     = meta["periods"]
+        num_classes = meta["num_classes"]
 
-    organized_keys = list(stored.get("organized", {}).keys())
-    all_class_names = [organized_keys[i] if i < len(organized_keys) else str(i+1) for i in range(num_classes)]
+        organized_keys = list(stored.get("organized", {}).keys())
+        all_class_names = [organized_keys[i] if i < len(organized_keys) else str(i+1) for i in range(num_classes)]
 
-    # Support single-class export via ?class_idx=N
-    single_idx = request.args.get("class_idx", None)
-    if single_idx is not None:
-        try:
-            single_idx = int(single_idx)
-            # Python allows negative indices (all_class_names[-1] silently
-            # returns the LAST class instead of raising IndexError), so a
-            # request like ?class_idx=-1 used to bypass the "export all
-            # classes" fallback below and return the wrong class instead.
-            if single_idx < 0:
-                raise IndexError("class_idx must be non-negative")
-            class_names = [all_class_names[single_idx]]
-            class_indices = [single_idx]
-        except (ValueError, IndexError):
-            class_names = all_class_names
+        # Support single-class export via ?class_idx=N
+        single_idx = request.args.get("class_idx", None)
+        if single_idx is not None:
+            try:
+                single_idx = int(single_idx)
+                # Python allows negative indices (all_class_names[-1] silently
+                # returns the LAST class instead of raising IndexError), so a
+                # request like ?class_idx=-1 used to bypass the "export all
+                # classes" fallback below and return the wrong class instead.
+                if single_idx < 0:
+                    raise IndexError("class_idx must be non-negative")
+                class_names = [all_class_names[single_idx]]
+                class_indices = [single_idx]
+            except (ValueError, IndexError):
+                class_names = all_class_names
+                class_indices = list(range(num_classes))
+        else:
+            class_names   = all_class_names
             class_indices = list(range(num_classes))
-    else:
-        class_names   = all_class_names
-        class_indices = list(range(num_classes))
 
-    # Day labels: Mon–Sat for 6, Mon–Fri for 5, etc.
-    _day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-    day_labels = [_day_names[i] if i < len(_day_names) else f"Day {i+1}" for i in range(days)]
+        # Day labels: Mon–Sat for 6, Mon–Fri for 5, etc.
+        _day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        day_labels = [_day_names[i] if i < len(_day_names) else f"Day {i+1}" for i in range(days)]
 
-    # ── Style factories (new object per cell avoids openpyxl shared-style bugs) ─
-    def hdr_fill():  return PatternFill("solid", fgColor="1F3864")
-    def hdr_font():  return Font(color="FFFFFF", bold=True, size=11)
-    def per_fill():  return PatternFill("solid", fgColor="D9E1F2")
-    def per_font():  return Font(bold=True, size=10)
-    def free_fill(): return PatternFill("solid", fgColor="FFF9C4")
-    def lab_fill():  return PatternFill("solid", fgColor="E7F5FF")
-    def norm_fill(): return PatternFill("solid", fgColor="FFFFFF")
-    def mk_border(): return Border(
-        left=Side(style="thin"), right=Side(style="thin"),
-        top=Side(style="thin"),  bottom=Side(style="thin"))
-    def mk_center(): return Alignment(horizontal="center", vertical="center", wrap_text=True)
+        # ── Style factories (new object per cell avoids openpyxl shared-style bugs) ─
+        def hdr_fill():  return PatternFill("solid", fgColor="1F3864")
+        def hdr_font():  return Font(color="FFFFFF", bold=True, size=11)
+        def per_fill():  return PatternFill("solid", fgColor="D9E1F2")
+        def per_font():  return Font(bold=True, size=10)
+        def free_fill(): return PatternFill("solid", fgColor="FFF9C4")
+        def lab_fill():  return PatternFill("solid", fgColor="E7F5FF")
+        def norm_fill(): return PatternFill("solid", fgColor="FFFFFF")
+        def mk_border(): return Border(
+            left=Side(style="thin"), right=Side(style="thin"),
+            top=Side(style="thin"),  bottom=Side(style="thin"))
+        def mk_center(): return Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-    wb = openpyxl.Workbook()
-    wb.remove(wb.active)
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
 
-    for cls_idx, cls_name in zip(class_indices, class_names):
-        ws = wb.create_sheet(title=f"Class {cls_name}"[:31])
+        for cls_idx, cls_name in zip(class_indices, class_names):
+            ws = wb.create_sheet(title=f"Class {cls_name}"[:31])
 
-        # Header row: Day | P1 | P2 | P3 | ...
-        ws.row_dimensions[1].height = 26
-        ws.column_dimensions["A"].width = 14
+            # Header row: Day | P1 | P2 | P3 | ...
+            ws.row_dimensions[1].height = 26
+            ws.column_dimensions["A"].width = 14
 
-        for col, label in enumerate(["Day"] + [f"P{p+1}" for p in range(periods)]):
-            c = ws.cell(row=1, column=col+1, value=label)
-            c.fill      = hdr_fill()
-            c.font      = hdr_font()
-            c.alignment = mk_center()
-            c.border    = mk_border()
+            for col, label in enumerate(["Day"] + [f"P{p+1}" for p in range(periods)]):
+                c = ws.cell(row=1, column=col+1, value=label)
+                c.fill      = hdr_fill()
+                c.font      = hdr_font()
+                c.alignment = mk_center()
+                c.border    = mk_border()
 
-        col_letters = list("BCDEFGHIJKLMNOPQRSTUVWXYZ")
-        for p in range(periods):
-            if p < len(col_letters):
-                ws.column_dimensions[col_letters[p]].width = 24
-
-        # Data rows — one row per day
-        for d in range(days):
-            row_num = d + 2
-            ws.row_dimensions[row_num].height = 42
-
-            # Day label cell
-            dc = ws.cell(row=row_num, column=1, value=day_labels[d])
-            dc.fill      = per_fill()
-            dc.font      = per_font()
-            dc.alignment = mk_center()
-            dc.border    = mk_border()
-
+            col_letters = list("BCDEFGHIJKLMNOPQRSTUVWXYZ")
             for p in range(periods):
-                text, kind = _cell_text(timetable, cls_idx, d, p, periods)
+                if p < len(col_letters):
+                    ws.column_dimensions[col_letters[p]].width = 24
 
-                fill = {"free": free_fill(), "lab": lab_fill()}.get(kind, norm_fill())
+            # Data rows — one row per day
+            for d in range(days):
+                row_num = d + 2
+                ws.row_dimensions[row_num].height = 42
 
-                pc = ws.cell(row=row_num, column=p+2, value=text)
-                pc.fill      = fill
-                pc.alignment = mk_center()
-                pc.border    = mk_border()
-                pc.font      = Font(size=9, bold=(kind == "lab"),
-                                    italic=(kind == "free"),
-                                    color="6C757D" if kind == "free" else "000000")
+                # Day label cell
+                dc = ws.cell(row=row_num, column=1, value=day_labels[d])
+                dc.fill      = per_fill()
+                dc.font      = per_font()
+                dc.alignment = mk_center()
+                dc.border    = mk_border()
 
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
-    fname = f"timetable_class_{class_names[0]}.xlsx" if len(class_names) == 1 else "timetable.xlsx"
-    return send_file(
-        output,
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        as_attachment=True,
-        download_name=fname
-    )
+                for p in range(periods):
+                    text, kind = _cell_text(timetable, cls_idx, d, p, periods)
+
+                    fill = {"free": free_fill(), "lab": lab_fill()}.get(kind, norm_fill())
+
+                    pc = ws.cell(row=row_num, column=p+2, value=text)
+                    pc.fill      = fill
+                    pc.alignment = mk_center()
+                    pc.border    = mk_border()
+                    pc.font      = Font(size=9, bold=(kind == "lab"),
+                                        italic=(kind == "free"),
+                                        color="6C757D" if kind == "free" else "000000")
+
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)  # CRITICAL: Must seek to beginning before sending
+        
+        fname = f"timetable_class_{class_names[0]}.xlsx" if len(class_names) == 1 else "timetable.xlsx"
+        return send_file(
+            output,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name=fname
+        )
+    
+    except Exception as e:
+        # Log the full error for Render debugging
+        error_msg = str(e)
+        error_trace = traceback.format_exc()
+        print(f"EXCEL DOWNLOAD ERROR: {error_msg}")
+        print(f"TRACEBACK:\n{error_trace}")
+        return jsonify({
+            "status": "error",
+            "message": f"Excel generation failed: {error_msg}"
+        }), 500
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  PDF DOWNLOAD
+#  PDF DOWNLOAD (FIXED for Render)
 # ─────────────────────────────────────────────────────────────────────────────
 @app.route("/download/pdf")
 def download_pdf():
-    from reportlab.lib.pagesizes import A4, landscape
-    from reportlab.lib import colors
-    from reportlab.lib.units import cm
-    from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle,
-                                    Paragraph, Spacer)
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.enums import TA_CENTER
+    """
+    Generate and download timetable as PDF file.
+    FIXED: Better error handling, uses safe fonts, explicit font registration.
+    """
+    try:
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib import colors
+        from reportlab.lib.units import cm
+        from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle,
+                                        Paragraph, Spacer)
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.enums import TA_CENTER
 
-    if not os.path.exists(spath("generated_timetable.json")) or \
-       not os.path.exists(spath("generated_metadata.json")) or \
-       not os.path.exists(spath("last_extraction.json")):
-        return "No timetable found. Please generate one first.", 404
+        if not os.path.exists(spath("generated_timetable.json")) or \
+           not os.path.exists(spath("generated_metadata.json")) or \
+           not os.path.exists(spath("last_extraction.json")):
+            return "No timetable found. Please generate one first.", 404
 
-    with open(spath("generated_timetable.json"))  as f: timetable   = json.load(f)
-    with open(spath("generated_metadata.json"))   as f: meta        = json.load(f)
-    with open(spath("last_extraction.json"))        as f: stored      = json.load(f)
+        with open(spath("generated_timetable.json"))  as f: timetable   = json.load(f)
+        with open(spath("generated_metadata.json"))   as f: meta        = json.load(f)
+        with open(spath("last_extraction.json"))        as f: stored      = json.load(f)
 
-    days        = meta["days"]
-    periods     = meta["periods"]
-    num_classes = meta["num_classes"]
+        days        = meta["days"]
+        periods     = meta["periods"]
+        num_classes = meta["num_classes"]
 
-    organized_keys = list(stored.get("organized", {}).keys())
-    class_names = []
-    for i in range(num_classes):
-        class_names.append(organized_keys[i] if i < len(organized_keys) else str(i + 1))
+        organized_keys = list(stored.get("organized", {}).keys())
+        class_names = []
+        for i in range(num_classes):
+            class_names.append(organized_keys[i] if i < len(organized_keys) else str(i + 1))
 
-    # Day labels: Mon–Sat for 6, Mon–Fri for 5, etc.
-    _day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-    day_labels = [_day_names[i] if i < len(_day_names) else f"Day {i+1}" for i in range(days)]
+        # Day labels: Mon–Sat for 6, Mon–Fri for 5, etc.
+        _day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        day_labels = [_day_names[i] if i < len(_day_names) else f"Day {i+1}" for i in range(days)]
 
-    output = io.BytesIO()
-    doc = SimpleDocTemplate(
-        output,
-        pagesize=landscape(A4),
-        leftMargin=1.5*cm, rightMargin=1.5*cm,
-        topMargin=1.5*cm,  bottomMargin=1.5*cm
-    )
+        output = io.BytesIO()
+        doc = SimpleDocTemplate(
+            output,
+            pagesize=landscape(A4),
+            leftMargin=1.5*cm, rightMargin=1.5*cm,
+            topMargin=1.5*cm,  bottomMargin=1.5*cm
+        )
 
-    styles  = getSampleStyleSheet()
-    title_s = ParagraphStyle("ttl", parent=styles["Heading2"],
-                             alignment=TA_CENTER, spaceAfter=6)
-    cell_s  = ParagraphStyle("cel", parent=styles["Normal"],
-                             fontSize=7, leading=9, alignment=TA_CENTER)
-    free_s  = ParagraphStyle("fre", parent=styles["Normal"],
-                             fontSize=7, leading=9, alignment=TA_CENTER,
-                             textColor=colors.HexColor("#6C757D"))
+        styles  = getSampleStyleSheet()
+        title_s = ParagraphStyle("ttl", parent=styles["Heading2"],
+                                 alignment=TA_CENTER, spaceAfter=6)
+        cell_s  = ParagraphStyle("cel", parent=styles["Normal"],
+                                 fontSize=7, leading=9, alignment=TA_CENTER)
+        free_s  = ParagraphStyle("fre", parent=styles["Normal"],
+                                 fontSize=7, leading=9, alignment=TA_CENTER,
+                                 textColor=colors.HexColor("#6C757D"))
 
-    NAVY  = colors.HexColor("#1F3864")
-    LBLUE = colors.HexColor("#D9E1F2")
-    YFREE = colors.HexColor("#FFF9C4")
-    BLAB  = colors.HexColor("#E7F5FF")
-    WHITE = colors.white
+        NAVY  = colors.HexColor("#1F3864")
+        LBLUE = colors.HexColor("#D9E1F2")
+        YFREE = colors.HexColor("#FFF9C4")
+        BLAB  = colors.HexColor("#E7F5FF")
+        WHITE = colors.white
 
 
-    # Support single-class export via ?class_idx=N
-    single_idx = request.args.get("class_idx", None)
-    if single_idx is not None:
-        try:
-            single_idx = int(single_idx)
-            # Negative indices (e.g. class_idx=-1) previously slipped through
-            # here silently — Python indexing wraps around instead of raising,
-            # so the "export all classes" fallback below never triggered and
-            # the wrong (last) class was returned instead. Also, an
-            # out-of-range *positive* index used to leave class_names (full
-            # fallback list) and class_indices ([single_idx], one bad index)
-            # mismatched in length instead of both falling back together.
-            if single_idx < 0 or single_idx >= len(class_names):
-                raise IndexError("class_idx out of range")
-            class_indices = [single_idx]
-            class_names   = [class_names[single_idx]]
-        except (ValueError, IndexError):
-            class_names   = [organized_keys[i] if i < len(organized_keys) else str(i+1) for i in range(num_classes)]
+        # Support single-class export via ?class_idx=N
+        single_idx = request.args.get("class_idx", None)
+        if single_idx is not None:
+            try:
+                single_idx = int(single_idx)
+                # Negative indices (e.g. class_idx=-1) previously slipped through
+                # here silently — Python indexing wraps around instead of raising,
+                # so the "export all classes" fallback below never triggered and
+                # the wrong (last) class was returned instead. Also, an
+                # out-of-range *positive* index used to leave class_names (full
+                # fallback list) and class_indices ([single_idx], one bad index)
+                # mismatched in length instead of both falling back together.
+                if single_idx < 0 or single_idx >= len(class_names):
+                    raise IndexError("class_idx out of range")
+                class_indices = [single_idx]
+                class_names   = [class_names[single_idx]]
+            except (ValueError, IndexError):
+                class_names   = [organized_keys[i] if i < len(organized_keys) else str(i+1) for i in range(num_classes)]
+                class_indices = list(range(num_classes))
+        else:
             class_indices = list(range(num_classes))
-    else:
-        class_indices = list(range(num_classes))
 
-    story = []
-    for cls_idx, cls_name in zip(class_indices, class_names):
-        story.append(Paragraph(f"Class {cls_name} — Timetable", title_s))
+        story = []
+        for cls_idx, cls_name in zip(class_indices, class_names):
+            story.append(Paragraph(f"Class {cls_name} — Timetable", title_s))
 
-        # Build table rows: header + one row per day
-        header = ["Day"] + [f"P{p+1}" for p in range(periods)]
-        rows   = [header]
+            # Build table rows: header + one row per day
+            header = ["Day"] + [f"P{p+1}" for p in range(periods)]
+            rows   = [header]
 
-        # Track which (row, col) cells need colour overrides
-        free_cells = []
-        lab_cells  = []
+            # Track which (row, col) cells need colour overrides
+            free_cells = []
+            lab_cells  = []
 
-        for d in range(days):
-            row = [Paragraph(day_labels[d], cell_s)]
-            for p in range(periods):
-                text, kind = _cell_text(timetable, cls_idx, d, p, periods)
-                style = free_s if kind == "free" else cell_s
-                row.append(Paragraph(text, style))
-                if kind == "free":
-                    free_cells.append((p+1, d+1))   # col, row
-                elif kind == "lab":
-                    lab_cells.append((p+1, d+1))
-            rows.append(row)
+            for d in range(days):
+                row = [Paragraph(day_labels[d], cell_s)]
+                for p in range(periods):
+                    text, kind = _cell_text(timetable, cls_idx, d, p, periods)
+                    style = free_s if kind == "free" else cell_s
+                    row.append(Paragraph(text, style))
+                    if kind == "free":
+                        free_cells.append((p+1, d+1))   # col, row
+                    elif kind == "lab":
+                        lab_cells.append((p+1, d+1))
+                rows.append(row)
 
-        col_w = (27 * cm) / (periods + 1)
-        t = Table(rows, colWidths=[col_w] * (periods + 1), repeatRows=1)
+            col_w = (27 * cm) / (periods + 1)
+            t = Table(rows, colWidths=[col_w] * (periods + 1), repeatRows=1)
 
-        ts = TableStyle([
-            # Header row
-            ("BACKGROUND", (0, 0), (-1, 0),  NAVY),
-            ("TEXTCOLOR",  (0, 0), (-1, 0),  WHITE),
-            ("FONTNAME",   (0, 0), (-1, 0),  "Helvetica-Bold"),
-            ("FONTSIZE",   (0, 0), (-1, 0),  9),
-            # Day column
-            ("BACKGROUND", (0, 1), (0, -1),  LBLUE),
-            ("FONTNAME",   (0, 1), (0, -1),  "Helvetica-Bold"),
-            # All cells
-            ("ALIGN",      (0, 0), (-1, -1), "CENTER"),
-            ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
-            ("FONTSIZE",   (1, 1), (-1, -1), 8),
-            ("ROWHEIGHT",  (0, 1), (-1, -1), 28),
-            ("GRID",       (0, 0), (-1, -1), 0.5, colors.grey),
-        ])
+            ts = TableStyle([
+                # Header row
+                ("BACKGROUND", (0, 0), (-1, 0),  NAVY),
+                ("TEXTCOLOR",  (0, 0), (-1, 0),  WHITE),
+                # FIXED: Use safe font name that exists in all environments
+                ("FONTNAME",   (0, 0), (-1, 0),  "Helvetica"),
+                ("FONTSIZE",   (0, 0), (-1, 0),  9),
+                # Day column
+                ("BACKGROUND", (0, 1), (0, -1),  LBLUE),
+                ("FONTNAME",   (0, 1), (0, -1),  "Helvetica"),
+                # All cells
+                ("ALIGN",      (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
+                ("FONTSIZE",   (1, 1), (-1, -1), 8),
+                ("ROWHEIGHT",  (0, 1), (-1, -1), 28),
+                ("GRID",       (0, 0), (-1, -1), 0.5, colors.grey),
+            ])
 
-        # Apply per-cell colour overrides
-        for (col_i, row_i) in free_cells:
-            ts.add("BACKGROUND", (col_i, row_i), (col_i, row_i), YFREE)
-        for (col_i, row_i) in lab_cells:
-            ts.add("BACKGROUND", (col_i, row_i), (col_i, row_i), BLAB)
+            # Apply per-cell colour overrides
+            for (col_i, row_i) in free_cells:
+                ts.add("BACKGROUND", (col_i, row_i), (col_i, row_i), YFREE)
+            for (col_i, row_i) in lab_cells:
+                ts.add("BACKGROUND", (col_i, row_i), (col_i, row_i), BLAB)
 
-        t.setStyle(ts)
-        story.append(t)
-        story.append(Spacer(1, 0.8 * cm))
+            t.setStyle(ts)
+            story.append(t)
+            story.append(Spacer(1, 0.8 * cm))
 
-    doc.build(story)
-    output.seek(0)
-    fname = f"timetable_class_{class_names[0]}.pdf" if len(class_names) == 1 else "timetable.pdf"
-    return send_file(
-        output,
-        mimetype="application/pdf",
-        as_attachment=True,
-        download_name=fname
-    )
-
-
-
-
-
-
-
-
-
-
-
-
-
+        doc.build(story)
+        output.seek(0)  # CRITICAL: Must seek to beginning before sending
+        
+        fname = f"timetable_class_{class_names[0]}.pdf" if len(class_names) == 1 else "timetable.pdf"
+        return send_file(
+            output,
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=fname
+        )
+    
+    except Exception as e:
+        # Log the full error for Render debugging
+        error_msg = str(e)
+        error_trace = traceback.format_exc()
+        print(f"PDF DOWNLOAD ERROR: {error_msg}")
+        print(f"TRACEBACK:\n{error_trace}")
+        return jsonify({
+            "status": "error",
+            "message": f"PDF generation failed: {error_msg}"
+        }), 500
 
 
 # CLEANED: Only one version of success_summary using dynamic metadata
@@ -771,9 +841,6 @@ def success_summary():
                            sync_group_label_map={str(k): v for k, v in sync_group_label_map.items()})
 
 
-
-
-
 # --- KEEP THIS VERSION (REPLACES THE TWO OLD ONES) ---
 @app.route("/update-data", methods=["POST"])
 def update_data():
@@ -927,8 +994,6 @@ def update_data():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-
-
 # ── Load Verify (restore to verify/configure page) ────────────────────────────
 @app.route("/load-verify", methods=["POST"])
 def load_verify():
@@ -1038,7 +1103,7 @@ def load_save():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-# .................
+# .................\
 @app.route("/setup-fixed")
 def setup_fixed():
     if not os.path.exists(spath("last_extraction.json")):
@@ -1325,7 +1390,9 @@ def run_final_solver():
                 tname_m   = m.get('teacherName', '')
                 if cidx < 0 or cidx >= len(class_keys):
                     report_lines.append(
-                        f"🔗 Sync group <b>\"{bname}\"</b>: classIdx <b>{cidx}</b> is out of range "                        f"(only {len(class_keys)} classes exist: indices 0–{len(class_keys)-1}). "                        f"Re-create the sync group — pick subjects from the correct class rows in the dropdown."
+                        f"🔗 Sync group <b>\"{bname}\"</b>: classIdx <b>{cidx}</b> is out of range "
+                        f"(only {len(class_keys)} classes exist: indices 0–{len(class_keys)-1}). "
+                        f"Re-create the sync group — pick subjects from the correct class rows in the dropdown."
                     )
                     continue
                 cname_m   = class_keys[cidx]
@@ -1407,7 +1474,11 @@ def run_final_solver():
             if real_hours < total_s * 0.2:  # Less than 20% real subjects
                 free_hrs = total_s - real_hours
                 report_lines.append(
-                    f"🔍 <b>Class {cname}</b> has only <b>{real_hours} real subject hours</b> "                    f"({free_hrs} free slots out of {total_s}). "                    f"This is likely a <b>PDF extraction artifact</b> — check if this is a real class "                    f"or leftover data from the last page of the PDF. "                    f"If it's not a real class, delete all its rows in Data Verification."
+                    f"🔍 <b>Class {cname}</b> has only <b>{real_hours} real subject hours</b> "
+                    f"({free_hrs} free slots out of {total_s}). "
+                    f"This is likely a <b>PDF extraction artifact</b> — check if this is a real class "
+                    f"or leftover data from the last page of the PDF. "
+                    f"If it's not a real class, delete all its rows in Data Verification."
                 )
 
         # OR-Tools missing warning
@@ -1415,7 +1486,9 @@ def run_final_solver():
             from ortools.sat.python import cp_model as _cp
         except ImportError:
             report_lines.append(
-                f"⚡ <b>OR-Tools is not installed.</b> The backtracking solver is much slower "                f"and may fail on inputs this size. "                f"Run <code>pip install ortools</code> and restart the app to use the fast CP-SAT solver."
+                f"⚡ <b>OR-Tools is not installed.</b> The backtracking solver is much slower "
+                f"and may fail on inputs this size. "
+                f"Run <code>pip install ortools</code> and restart the app to use the fast CP-SAT solver."
             )
 
         if not report_lines:
@@ -1435,7 +1508,6 @@ def run_final_solver():
         return jsonify({"status": "error", "message": str(e)}), 500
 
         
-
 
 @app.route("/swap-slots", methods=["POST"])
 def swap_slots():
@@ -1554,4 +1626,5 @@ if __name__ == "__main__":
     # by anyone other than you. It was hardcoded on before — now it's opt-in
     # via an explicit environment variable, and off by default.
     debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
-    app.run(host='0.0.0.0', port=5000, debug=debug_mode)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)
