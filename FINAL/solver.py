@@ -758,8 +758,18 @@ def generate_timetable_backtrack(
                 locked_subs = []
                 block_entry = block_sub_teachers.get((y, i))
                 if block_entry is not None and block_entry[0] == assigned_name.lower().strip():
+                    # Every elective sub-teacher must be available for the block.
+                    # If any one is already unavailable/fixed at this slot, the
+                    # entire split block cannot be placed here.
+                    blocked_by_subteacher = any(
+                        sub_tid in main_teacher_list[x]
+                        and not main_teacher_list[x][sub_tid]["available"]
+                        for sub_tid in block_entry[1]
+                    )
+                    if blocked_by_subteacher:
+                        continue
                     for sub_tid in block_entry[1]:
-                        if sub_tid in main_teacher_list[x] and main_teacher_list[x][sub_tid]["available"]:
+                        if sub_tid in main_teacher_list[x]:
                             main_teacher_list[x][sub_tid]["available"] = False
                             locked_subs.append(sub_tid)
 
