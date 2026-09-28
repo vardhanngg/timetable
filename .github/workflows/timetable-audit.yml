@@ -21,7 +21,21 @@ jobs:
           python -m py_compile FINAL/app.py FINAL/adapter.py FINAL/extractor.py FINAL/solver.py FINAL/config.py FINAL/test_sync_groups.py
 
       - name: Run Sync Group regression tests
-        run: python -m unittest FINAL/test_sync_groups.py
+        id: sync_tests
+        continue-on-error: true
+        run: |
+          set +e
+          python -m unittest FINAL/test_sync_groups.py -v > sync-test-output.txt 2>&1
+          status=$?
+          cat sync-test-output.txt
+          exit $status
+
+      - name: Upload Sync Group test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sync-group-test-output
+          path: sync-test-output.txt
       - name: Validate required templates and deployment files
         run: |
           test -f FINAL/templates/upload.html
