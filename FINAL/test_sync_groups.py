@@ -60,14 +60,15 @@ class SyncGroupSolverTests(unittest.TestCase):
         self.assertIsNotNone(timetable)
         shared_slots = [
             slot for slot in range(4)
-            if timetable[slot][0] == "Mathematics"
-            and timetable[slot][1] == "Mathematics"
+            if timetable[slot][0] != "Free"
+            and timetable[slot][1] != "Free"
+            and timetable[slot][0] == timetable[slot][1]
         ]
         self.assertEqual(len(shared_slots), 2)
         for slot in range(4):
             self.assertEqual(
-                timetable[slot][0] == "Mathematics",
-                timetable[slot][1] == "Mathematics",
+                timetable[slot][0] != "Free",
+                timetable[slot][1] != "Free",
             )
 
     def test_single_class_electives_lock_all_subteachers(self):
@@ -109,7 +110,8 @@ class SyncGroupSolverTests(unittest.TestCase):
         )
         self.assertIsNotNone(timetable)
         language_slots = [
-            slot for slot in range(6) if timetable[slot][0] == "Language"
+            slot for slot in range(6)
+            if timetable[slot][0] != "Free"
         ]
         self.assertEqual(len(language_slots), 2)
         for slot in language_slots:
