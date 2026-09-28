@@ -537,6 +537,7 @@ def download_excel():
     try:
         import openpyxl
         from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
 
         if not os.path.exists(spath("generated_timetable.json")) or \
            not os.path.exists(spath("generated_metadata.json")) or \
@@ -593,9 +594,10 @@ def download_excel():
 
         wb = openpyxl.Workbook()
         wb.remove(wb.active)
+        used_sheet_titles = set()
 
         for cls_idx, cls_name in zip(class_indices, class_names):
-            ws = wb.create_sheet(title=f"Class {cls_name}"[:31])
+            ws = wb.create_sheet(title=_safe_sheet_title(f"Class {cls_name}", "Class", used_sheet_titles))
 
             # Header row: Day | P1 | P2 | P3 | ...
             ws.row_dimensions[1].height = 26
@@ -608,10 +610,8 @@ def download_excel():
                 c.alignment = mk_center()
                 c.border    = mk_border()
 
-            col_letters = list("BCDEFGHIJKLMNOPQRSTUVWXYZ")
             for p in range(periods):
-                if p < len(col_letters):
-                    ws.column_dimensions[col_letters[p]].width = 24
+                ws.column_dimensions[get_column_letter(p + 2)].width = 24
 
             # Data rows — one row per day
             for d in range(days):
@@ -647,7 +647,7 @@ def download_excel():
             output,
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             as_attachment=True,
-            download_name=fname
+            download_name=_safe_download_stem(fname, "timetable.xlsx")
         )
     
     except Exception as e:
@@ -750,7 +750,7 @@ def download_pdf():
 
         story = []
         for cls_idx, cls_name in zip(class_indices, class_names):
-            story.append(Paragraph(f"Class {cls_name} — Timetable", title_s))
+            story.append(Paragraph(escape(f"Class {cls_name} — Timetable"), title_s))
 
             # Build table rows: header + one row per day
             header = ["Day"] + [f"P{p+1}" for p in range(periods)]
@@ -761,11 +761,11 @@ def download_pdf():
             lab_cells  = []
 
             for d in range(days):
-                row = [Paragraph(day_labels[d], cell_s)]
+                row = [Paragraph(escape(day_labels[d]), cell_s)]
                 for p in range(periods):
                     text, kind = _cell_text(timetable, cls_idx, d, p, periods)
                     style = free_s if kind == "free" else cell_s
-                    row.append(Paragraph(text, style))
+                    row.append(Paragraph(escape(text), style))
                     if kind == "free":
                         free_cells.append((p+1, d+1))   # col, row
                     elif kind == "lab":
@@ -831,20 +831,9 @@ def download_pdf():
 #  TEACHER TIMETABLE HELPER
 # ─────────────────────────────────────────────────────────────────────────────
 def _build_teacher_timetable(teacher_name, timetable, stored, days, periods, num_classes):
-    """Return a days×periods grid for one teacher.
-    Each cell: "" (free) or "SubjectName\n(ClassName)".
-    """
-    organized  = stored.get("organized", {})
+    """Return a days×periods grid for one teacher."""
+    organized = stored.get("organized", {})
     class_keys = list(organized.keys())
-    subj_teacher = {}
-    for cidx, cname in enumerate(class_keys):
-        for t in organized[cname]:
-            key = (cidx, t["subject"].lower().strip())
-            subj_teacher[key] = t["teacher"]
-            stripped = re.sub(r"\s*\(lab[^)]*\)", "", t["subject"], flags=re.IGNORECASE).lower().strip()
-            if stripped != t["subject"].lower().strip():
-                subj_teacher[(cidx, stripped)] = t["teacher"]
-
     grid = [["" for _ in range(periods)] for _ in range(days)]
     for day in range(days):
         for p in range(periods):
@@ -854,20 +843,11 @@ def _build_teacher_timetable(teacher_name, timetable, stored, days, periods, num
                     cell = timetable[si][cidx]
                 except (IndexError, KeyError, TypeError):
                     continue
-                if not cell or cell == 0 or str(cell).strip().lower() in ("", "free", "0"):
+                if not cell or str(cell).strip().lower() in ("", "free", "0"):
                     continue
-                cell_str  = str(cell).strip()
-                cell_norm = re.sub(r"\s*\(lab[^)]*\)", "", cell_str, flags=re.IGNORECASE).lower().strip()
-                tname = (subj_teacher.get((cidx, cell_str.lower().strip())) or
-                         subj_teacher.get((cidx, cell_norm)))
-                if not tname:
-                    for (c2, subj), tn in subj_teacher.items():
-                        if c2 == cidx and cell_norm.startswith(subj[:6]):
-                            tname = tn
-                            break
-                if tname == teacher_name:
+                if teacher_name in _teachers_for_cell(cidx, cell, stored):
                     cname_label = class_keys[cidx] if cidx < len(class_keys) else str(cidx)
-                    grid[day][p] = f"{cell_str}\n({cname_label})"
+                    grid[day][p] = f"{cell}\n({cname_label})"
     return grid
 
 
@@ -912,7 +892,7 @@ def download_teacher_pdf():
         doc = SimpleDocTemplate(output, pagesize=landscape(A4),
                                 leftMargin=1.5*cm, rightMargin=1.5*cm,
                                 topMargin=1.5*cm,  bottomMargin=1.5*cm)
-        story = [Paragraph(f"Teacher Timetable — {teacher_name}", title_s)]
+        story = [Paragraph(escape(f"Teacher Timetable — {teacher_name}"), title_s)]
         header = ["Day"] + [f"P{p+1}" for p in range(periods)]
         rows   = [header]
         free_cells = []
@@ -921,7 +901,7 @@ def download_teacher_pdf():
             for p in range(periods):
                 text = grid[d][p]
                 if text:
-                    row.append(Paragraph(text.replace("\n", "<br/>"), cell_s))
+                    row.append(Paragraph(escape(text).replace("\n", "<br/>"), cell_s))
                 else:
                     row.append(Paragraph("Free", free_s))
                     free_cells.append((p + 1, d + 1))
@@ -944,7 +924,7 @@ def download_teacher_pdf():
         doc.build(story); output.seek(0)
         safe = re.sub(r"[^\w\-]", "_", teacher_name)
         return send_file(output, mimetype="application/pdf", as_attachment=True,
-                         download_name=f"timetable_teacher_{safe}.pdf")
+                         download_name=f"timetable_teacher_{_safe_download_stem(safe, 'teacher')}.pdf")
     except Exception as e:
         print(f"TEACHER PDF ERROR: {traceback.format_exc()}")
         return jsonify({"status":"error","message":str(e)}), 500
@@ -984,11 +964,11 @@ def download_teacher_excel():
                                        top=Side(style="thin"),  bottom=Side(style="thin"))
         def mk_center(): return Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-        wb = openpyxl.Workbook(); ws = wb.active; ws.title = teacher_name[:31]
+        wb = openpyxl.Workbook(); ws = wb.active; ws.title = _safe_sheet_title(teacher_name, "Teacher", set())
         ws.row_dimensions[1].height = 26; ws.column_dimensions["A"].width = 14
-        col_letters = list("BCDEFGHIJKLMNOPQRSTUVWXYZ")
+        from openpyxl.utils import get_column_letter
         for p in range(periods):
-            if p < len(col_letters): ws.column_dimensions[col_letters[p]].width = 26
+            ws.column_dimensions[get_column_letter(p + 2)].width = 26
 
         for col, label in enumerate(["Day"] + [f"P{p+1}" for p in range(periods)]):
             c = ws.cell(row=1, column=col+1, value=label)
@@ -1009,7 +989,7 @@ def download_teacher_excel():
         safe = re.sub(r"[^\w\-]", "_", teacher_name)
         return send_file(output,
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            as_attachment=True, download_name=f"timetable_teacher_{safe}.xlsx")
+            as_attachment=True, download_name=f"timetable_teacher_{_safe_download_stem(safe, 'teacher')}.xlsx")
     except Exception as e:
         print(f"TEACHER EXCEL ERROR: {traceback.format_exc()}")
         return jsonify({"status":"error","message":str(e)}), 500
@@ -1050,14 +1030,9 @@ def teacher_cell_map():
                     if not cell or cell == 0 or str(cell).strip().lower() in ("","free","0"): continue
                     cell_str  = str(cell).strip()
                     cell_norm = re.sub(r"\s*\(lab[^)]*\)", "", cell_str, flags=re.IGNORECASE).lower().strip()
-                    tname = (subj_teacher.get((cidx, cell_str.lower().strip())) or
-                             subj_teacher.get((cidx, cell_norm)))
-                    if not tname:
-                        for (c2, subj), tn in subj_teacher.items():
-                            if c2 == cidx and cell_norm.startswith(subj[:6]):
-                                tname = tn; break
-                    if tname:
-                        cell_map[f"{cidx}-{si}"] = tname
+                    teachers = _teachers_for_cell(cidx, cell, stored)
+                    if teachers:
+                        cell_map[f"{cidx}-{si}"] = ", ".join(sorted(teachers))
         return jsonify(cell_map)
     except Exception as e:
         print(f"TEACHER CELL MAP ERROR: {traceback.format_exc()}")
@@ -1067,42 +1042,25 @@ def teacher_cell_map():
 # CLEANED: Only one version of success_summary using dynamic metadata
 @app.route("/success-summary")
 def success_summary():
-    if not os.path.exists(spath("generated_timetable.json")) or not os.path.exists(spath("generated_metadata.json")):
-        return redirect(url_for('home'))
+    if not all(os.path.exists(spath(fn)) for fn in ("generated_timetable.json", "generated_metadata.json", "last_extraction.json")):
+        return redirect(url_for("home"))
 
     with open(spath("generated_timetable.json"), "r") as f:
         timetable = json.load(f)
     with open(spath("generated_metadata.json"), "r") as f:
         meta = json.load(f)
-    with open(spath("final_schedule.json"), "r") as f:
-        final_data = json.load(f)
     with open(spath("last_extraction.json"), "r") as f:
         stored = json.load(f)
 
-    days        = meta['days']
-    periods     = meta['periods']
-    num_classes = meta['num_classes']
-
-    class_names_raw = list(dict.fromkeys([row['class'] for row in final_data]))
-    # Strip "Class " prefix stored in final_schedule
-    class_names = [c.replace("Class ", "").strip() for c in class_names_raw]
+    days = int(meta.get("days", 6))
+    periods = int(meta.get("periods", 6))
+    num_classes = int(meta.get("num_classes", 0))
+    organized = stored.get("organized", {})
+    class_names = list(organized.keys())
 
     # ── Build teacher_slot_map: {teacher_name: ["classIdx-slotIdx", ...]} ──────
     # We need to know which teacher teaches each subject in each class
-    organized = stored.get('organized', {})
-    # subject->teacher lookup per class (also store normalized key for labs)
-    subj_teacher = {}  # (class_idx, subject_lower_stripped) -> teacher_name
-    for cidx, cname in enumerate(organized.keys()):
-        for t in organized[cname]:
-            # Primary key: exact subject name lowered
-            key = (cidx, t['subject'].lower().strip())
-            subj_teacher[key] = t['teacher']
-            # Secondary key: strip "(lab N)" suffix so "Physics (Lab 1)" matches "Physics"
-            import re as _re
-            stripped = _re.sub(r'\s*\(lab[^)]*\)', '', t['subject'], flags=_re.IGNORECASE).lower().strip()
-            if stripped != t['subject'].lower().strip():
-                subj_teacher[(cidx, stripped)] = t['teacher']
-
+    organized = stored.get("organized", {})
     teacher_slot_map = {}   # teacher_name -> [classIdx-slotIdx]
     teacher_names_set = set()
     for cidx in range(num_classes):
@@ -1115,72 +1073,52 @@ def success_summary():
                     continue
                 if not cell or cell == 0 or str(cell).lower() in ('free', 'f', '0'):
                     continue
-                cell_str = str(cell).strip()
-                import re as _re
-                cell_norm = _re.sub(r'\s*\(lab[^)]*\)', '', cell_str, flags=_re.IGNORECASE).lower().strip()
-
-                # Try exact match first, then stripped match, then prefix match
-                key_exact   = (cidx, cell_str.lower().strip())
-                key_stripped = (cidx, cell_norm)
-                tname = subj_teacher.get(key_exact) or subj_teacher.get(key_stripped)
-                if not tname:
-                    # prefix fallback: find any subject that starts with first 6 chars
-                    for (c2, subj), tn in subj_teacher.items():
-                        if c2 == cidx and cell_norm.startswith(subj[:6]):
-                            tname = tn
-                            break
-                if tname:
-                    teacher_names_set.add(tname)
-                    teacher_slot_map.setdefault(tname, []).append(f"{cidx}-{si}")
-
-                # Also register sub-teachers for split blocks (e.g. "II Language" → aa, bb)
-                # so they appear in the By Teacher view and are marked busy at these slots.
-                # Bundle names are now "BlockName|ClassName" — use display_name for cell match.
-                for bundle in (stored.get('auto_bundles', []) + stored.get('sync_groups', [])):
-                    bname_display = bundle.get('display_name', bundle.get('name', ''))
-                    bname_lower = bname_display.lower().strip()
-                    if bname_lower in (cell_norm, cell_str.lower().strip()):
-                        for m in bundle.get('members', []):
-                            if int(m.get('classIdx', -1)) == cidx:
-                                sub_t = m.get('teacherName', '')
-                                if sub_t and sub_t != tname:
-                                    teacher_names_set.add(sub_t)
-                                    teacher_slot_map.setdefault(sub_t, []).append(f"{cidx}-{si}")
+                for teacher in _teachers_for_cell(cidx, cell, stored):
+                    teacher_names_set.add(teacher)
+                    teacher_slot_map.setdefault(teacher, []).append(f"{cidx}-{si}")
 
     teacher_names = sorted(teacher_names_set)
 
     # ── Build sync-group exempt set ───────────────────────────────────────────
     # Sync groups intentionally place the same teacher in multiple classes at
     # the same slot. Build (tname, slot_idx) pairs to skip in conflict detection.
-    sync_exempt = set()   # {(teacher_name, slot_idx), ...}
-    # Re-stamp auto_bundle classIdx using className before using them
-    # (saved bundles can have stale indices; this ensures correct class matching)
-    _ck = list(stored.get('organized', {}).keys())
-    _fixed_abs = []
-    for _ab in stored.get('auto_bundles', []):
-        _fm = []
-        for _m in _ab.get('members', []):
-            _cn = _m.get('className', '').replace('Class ', '').strip()
-            try: _idx = _ck.index(_cn)
-            except ValueError: _idx = _m.get('classIdx', -1)
-            _mf = dict(_m); _mf['classIdx'] = _idx; _fm.append(_mf)
-        _fab = dict(_ab); _fab['members'] = _fm; _fixed_abs.append(_fab)
-    # Include both UI-created sync_groups and auto-built bundles from Split rows
-    sync_groups_stored = stored.get('sync_groups', []) + _fixed_abs
-    for sg in sync_groups_stored:
-        members = sg.get('members', [])
-        if not members:
+    _ck = list(stored.get("organized", {}).keys())
+    _bundles = []
+    for _raw in (stored.get("auto_bundles", []) or []) + (stored.get("sync_groups", []) or []):
+        if not isinstance(_raw, dict):
             continue
-        # Exempt ALL member teachers from conflict detection — whether they're
-        # shared across classes (multi-class sync) or are sub-teachers within
-        # one class (intra-class split like II Language with eng/sans).
-        # Without this, intra-class sub-teachers get double-counted as conflicts.
-        all_member_teachers = {m.get('teacherName', '') for m in members if m.get('teacherName')}
-        for tname_sg in all_member_teachers:
-            if tname_sg in teacher_slot_map:
-                for slot_str in teacher_slot_map[tname_sg]:
-                    _, si_str = slot_str.split('-')
-                    sync_exempt.add((tname_sg, int(si_str)))
+        _members = []
+        for _m in _raw.get("members", []) or []:
+            _mf = dict(_m)
+            _mf["classIdx"] = _resolve_class_index(_ck, _m)
+            _members.append(_mf)
+        _b = dict(_raw); _b["members"] = _members
+        _bundles.append(_b)
+
+    sync_groups_stored = []
+    _seen_bundle_keys = set()
+    for _b in _bundles:
+        _key = (
+            str(_b.get("name", "")),
+            tuple(sorted((int(m.get("classIdx", -1)), str(m.get("teacherName", "")), str(m.get("subject", "")))
+                         for m in _b.get("members", [])))
+        )
+        if _key not in _seen_bundle_keys:
+            _seen_bundle_keys.add(_key)
+            sync_groups_stored.append(_b)
+
+    sync_allowed = {}
+    for _sg in sync_groups_stored:
+        for _m in _sg.get("members", []):
+            _t = str(_m.get("teacherName", "")).strip()
+            _c = int(_m.get("classIdx", -1))
+            if not _t or _c < 0:
+                continue
+            for _slot_ref in teacher_slot_map.get(_t, []):
+                _ci, _si = _slot_ref.split("-", 1)
+                if int(_ci) == _c:
+                    sync_allowed.setdefault((_t, int(_si)), set()).add(_c)
+
 
     # ── Conflict checker: same teacher in 2 DIFFERENT classes at same slot ────
     # Use a SET of class indices so duplicate entries for the same class
@@ -1194,8 +1132,9 @@ def success_summary():
             slot_teacher_classes.setdefault(key, set()).add(int(cidx_str))
     for (tname, si), cidxs in slot_teacher_classes.items():
         if len(cidxs) > 1:  # only a real conflict if teacher in 2+ DIFFERENT classes
-            # Skip if this (teacher, slot) is an intentional sync group assignment
-            if (tname, si) in sync_exempt:
+            # Exempt only when every class using this teacher at this slot is
+            # explicitly covered by the same sync bundle.
+            if cidxs == sync_allowed.get((tname, si), set()):
                 continue
             for cidx in cidxs:
                 conflicts.append([cidx, si])
