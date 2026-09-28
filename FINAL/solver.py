@@ -180,11 +180,13 @@ def generate_timetable_ortools(
                 })
 
     if lab_shortfalls:
-        try:
-            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "lab_scheduling_warnings.json"), "w") as f:
-                json.dump(lab_shortfalls, f, indent=2)
-        except Exception as e:
-            logging.error(f"Could not write lab_scheduling_warnings.json: {e}")
+        # A timetable with missing lab hours is not a valid timetable.  The
+        # previous implementation logged the shortfall but continued, which
+        # allowed /run-final-solver to report success with incomplete labs.
+        # Fail the solve so the user gets the existing solver diagnostics.
+        for warning in lab_shortfalls:
+            logging.error("LAB SHORTFALL: %s", warning)
+        return None
 
     # ── STEP 3: Build subject entries per class ───────────────────────────────
     # class_entries[cidx] = list of {teacher_id, name, type, hours}
