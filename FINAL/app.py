@@ -1173,10 +1173,23 @@ def success_summary():
 @app.route("/update-data", methods=["POST"])
 def update_data():
     try:
-        incoming_payload = request.get_json()
-        web_data     = incoming_payload.get('table_data', [])
-        config       = incoming_payload.get('config', {})
-        split_groups = incoming_payload.get('split_groups', [])  # NEW: from Split rows
+        incoming_payload = request.get_json(silent=True)
+        if not isinstance(incoming_payload, dict):
+            return jsonify({"status": "error", "message": "Invalid JSON payload."}), 400
+        web_data = incoming_payload.get("table_data", [])
+        config = incoming_payload.get("config", {})
+        split_groups = incoming_payload.get("split_groups", [])
+        if not isinstance(web_data, list) or not isinstance(config, dict) or not isinstance(split_groups, list):
+            return jsonify({"status": "error", "message": "Malformed timetable data."}), 400
+        if len(web_data) > 1000:
+            return jsonify({"status": "error", "message": "Too many timetable rows."}), 413
+        try:
+            days_cfg, periods_cfg = _validate_week_config(config.get("days", 6), config.get("periods", 6))
+            labs_cfg = int(config.get("labs", 2))
+        except (TypeError, ValueError):
+            return jsonify({"status": "error", "message": "Invalid school configuration."}), 400
+        if not (1 <= labs_cfg <= 50):
+            return jsonify({"status": "error", "message": "Labs must be between 1 and 50."}), 400
 
         # Map teacher names to stable numeric IDs. This used to just be
         # `{name: i for i, name in enumerate(sorted(all_teachers))}` recomputed
@@ -1186,7 +1199,11 @@ def update_data():
         # teacher_id already baked into a saved fixed slot or sync group from
         # an earlier /update-data call would now point at the wrong teacher.
         # Persist the mapping per session and only ever append new names.
-        all_teachers = sorted(set(row['teacher'] for row in web_data))
+        all_teachers = sorted({
+            str(row.get("teacher", "")).strip()
+            for row in web_data
+            if str(row.get("teacher", "")).strip()
+        })
         teacher_map_path = spath("teacher_id_map.json")
         t_name_to_id = {}
         if os.path.exists(teacher_map_path):
@@ -1209,11 +1226,17 @@ def update_data():
 
         organized_classes = {}
         for row in web_data:
-            c_name = row['class'].replace("Class ", "").strip()
+            c_name = str(row.get("class", "")).replace("Class ", "").strip()
+            if not c_name or len(c_name) > 120:
+                raise ValueError("Every row must have a valid class name (1–120 characters).")
             if c_name not in organized_classes:
                 organized_classes[c_name] = []
 
-            split_block = row.get('split_block', '').strip()
+            split_block = str(row.get("split_block", "") or "").strip()
+            subject_text = str(row.get("subject", "") or "").strip()
+            teacher_text = str(row.get("teacher", "") or "").strip()
+            if len(subject_text) > 160 or len(teacher_text) > 160:
+                raise ValueError("Subject and teacher names must be 160 characters or fewer.")
 
             if split_block:
                 # This row is a sub-option of a split block.
@@ -1228,7 +1251,7 @@ def update_data():
                     # Use the first sub-option's teacher as the "primary" teacher
                     # for the block row — the bundle will mark all sub-teachers busy.
                     organized_classes[c_name].append({
-                        "teacher":     row.get('teacher', 'Unknown'),
+                        "teacher":     teacher_text,
                         "teacher_id":  t_name_to_id.get(row.get('teacher'), 99),
                         "subject":     split_block,   # block name IS the subject in timetable
                         "hours":       int(row.get('periods', 0)),
@@ -1242,14 +1265,34 @@ def update_data():
                 # — it would add extra hours to the class workload
                 continue
 
+            if not subject_text or not teacher_text:
+                raise ValueError(f"Class {c_name}: subject and teacher are required.")
+            row_type = str(row.get("type", "theory")).lower().strip()
+            if row_type not in ("theory", "lab"):
+                raise ValueError(f"Class {c_name}: invalid subject type.")
+            hours_value = int(row.get("periods", 0))
+            if hours_value < 1:
+                raise ValueError(f"Class {c_name}: hours must be at least 1.")
+            continuous_value = int(row.get("continuous", 1))
+            lab_no_value = int(row.get("lab_no", 0))
+            if row_type == "lab":
+                if continuous_value < 1 or continuous_value > periods_cfg:
+                    raise ValueError(f"Class {c_name}: lab block length is invalid.")
+                if hours_value % continuous_value:
+                    raise ValueError(f"Class {c_name}: lab total hours must be divisible by block length.")
+                if not (1 <= lab_no_value <= labs_cfg):
+                    raise ValueError(f"Class {c_name}: lab room must be between 1 and {labs_cfg}.")
+            else:
+                continuous_value, lab_no_value = 1, 0
+
             organized_classes[c_name].append({
-                "teacher":    row.get('teacher', 'Unknown'),
-                "teacher_id": t_name_to_id.get(row.get('teacher'), 99),
-                "subject":    row.get('subject', 'General'),
-                "hours":      int(row.get('periods', 0)),
-                "type":       str(row.get('type', 'theory')).lower().strip(),
-                "continuous": int(row.get('continuous', 1)),
-                "lab_no":     int(row.get('lab_no', 0)),
+                "teacher": teacher_text,
+                "teacher_id": t_name_to_id.get(teacher_text, 99),
+                "subject": subject_text,
+                "hours": hours_value,
+                "type": row_type,
+                "continuous": continuous_value,
+                "lab_no": lab_no_value,
                 "split_block": '',
             })
 
@@ -1304,12 +1347,15 @@ def update_data():
             else:
                 logging.info(f"Auto-bundle for '{block_name}' in {cname}: fewer than 2 sub-options — skipping.")
 
-        merge_groups = incoming_payload.get('merge_groups', [])
+        merge_groups = incoming_payload.get("merge_groups", [])
+        if not isinstance(merge_groups, list):
+            return jsonify({"status": "error", "message": "Malformed merge-group data."}), 400
 
         session_data = {
             "organized":      organized_classes,
-            "days":           int(config.get('days', 6)),
-            "periods":        int(config.get('periods', 6)),
+            "days": days_cfg,
+            "periods": periods_cfg,
+            "labs": labs_cfg,
             "session_token":  str(__import__('uuid').uuid4()),
             "auto_bundles":   auto_bundles,
             "merge_groups":   merge_groups,
