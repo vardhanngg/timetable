@@ -341,7 +341,7 @@ def _validate_run_solver_payload(stored, fixed_data, unavail_data, bundles):
                 continue
             if teacher_id in ("__free__", "__event__"):
                 continue
-            if not re.fullmatch(r"-?d+", teacher_id):
+            if not re.fullmatch(r"-?\\d+", teacher_id):
                 raise ValueError("Fixed-slot teacher ID is invalid.")
             tid = int(teacher_id)
             matches = [
@@ -357,7 +357,7 @@ def _validate_run_solver_payload(stored, fixed_data, unavail_data, bundles):
     if len(unavail_data) > 500:
         raise ValueError("Too many teacher-unavailability entries.")
     for raw_tid, slots in unavail_data.items():
-        if not re.fullmatch(r"-?d+", str(raw_tid)):
+        if not re.fullmatch(r"-?\\d+", str(raw_tid)):
             raise ValueError("Teacher-unavailability ID is invalid.")
         if not isinstance(slots, list) or len(slots) > total_slots:
             raise ValueError("Teacher-unavailability slots are invalid.")
@@ -391,7 +391,7 @@ def _validate_run_solver_payload(stored, fixed_data, unavail_data, bundles):
             if not str(member.get("subject", "") or "").strip():
                 raise ValueError("Sync/elective group subject is required.")
             tid = member.get("teacherId")
-            if tid is not None and tid != "" and not re.fullmatch(r"-?d+", str(tid)):
+            if tid is not None and tid != "" and not re.fullmatch(r"-?\\d+", str(tid)):
                 raise ValueError("Sync/elective group teacher ID is invalid.")
 
     return days, periods
