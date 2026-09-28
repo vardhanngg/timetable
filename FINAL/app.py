@@ -9,6 +9,7 @@ import traceback
 from flask import Flask, render_template, request, redirect, url_for, jsonify, session
 import io
 from flask import send_file
+from xml.sax.saxutils import escape
 # Custom modules
 from solver import generate_timetable, generate_timetable_with_retry
 from adapter import build_solver_inputs_from_classes
@@ -74,8 +75,10 @@ def parse_xml_timetable(xml_path):
         # Parse config
         config_elem = root.find('config')
         if config_elem is not None:
-            config['days'] = int(config_elem.findtext('days', 5))
-            config['periods'] = int(config_elem.findtext('periods', 6))
+            config["days"], config["periods"] = _validate_week_config(
+                config_elem.findtext("days", 5),
+                config_elem.findtext("periods", 6),
+            )
         
         # Parse classes and assign teacher IDs
         teacher_id_counter = 0
@@ -97,7 +100,7 @@ def parse_xml_timetable(xml_path):
                     teacher_id_counter += 1
                     teacher_id = teacher_id_counter
                     teacher_name_to_id[teacher_name] = teacher_id
-                    teacher_list[str(teacher_id)] = {"name": teacher_name}
+                    teacher_list[str(teacher_id)] = {"Name": teacher_name}
                 else:
                     teacher_id = teacher_name_to_id[teacher_name]
                 
@@ -145,6 +148,11 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 # below by giving each browser a private, cookie-identified subdirectory and
 # routing all of that file I/O through it via spath(...).
 app.secret_key = os.environ.get("FLASK_SECRET_KEY") or uuid.uuid4().hex
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get("FLASK_ENV", "").lower() == "production",
+)
 if not os.environ.get("FLASK_SECRET_KEY"):
     print("⚠️  FLASK_SECRET_KEY not set — using a random key generated for this run. "
           "Sessions won't survive a server restart. Set FLASK_SECRET_KEY in the "
@@ -162,11 +170,134 @@ def _sid():
     return session["sid"]
 
 
+_SID_RE = re.compile(r"^[0-9a-f]{32}$")
+
+def _sid():
+    """Get/create a validated UUID-hex session id from the signed Flask session."""
+    raw = session.get("sid")
+    if not isinstance(raw, str) or not _SID_RE.fullmatch(raw):
+        raw = uuid.uuid4().hex
+        session["sid"] = raw
+        session.permanent = True
+    return raw
+
+
 def spath(filename):
-    """Resolve filename to this user's private session directory, creating it if needed."""
+    """Resolve an internal filename to this browser's private session directory."""
     d = os.path.join(SESSIONS_DIR, _sid())
     os.makedirs(d, exist_ok=True)
     return os.path.join(d, filename)
+
+
+def _validate_week_config(days, periods):
+    try:
+        days, periods = int(days), int(periods)
+    except (TypeError, ValueError):
+        raise ValueError("Days and periods must be integers.")
+    if not (1 <= days <= 7):
+        raise ValueError("Working days must be between 1 and 7.")
+    if not (1 <= periods <= 24):
+        raise ValueError("Periods per day must be between 1 and 24.")
+    return days, periods
+
+
+def _safe_download_stem(value, fallback):
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", str(value or "")).strip("._-")
+    return (cleaned or fallback)[:100]
+
+
+def _safe_sheet_title(value, fallback, used):
+    base = re.sub(r'[\\/*?:\[\]]+', "_", str(value or "")).strip() or fallback
+    base = base[:31]
+    candidate = base
+    n = 1
+    while candidate in used:
+        suffix = f" ({n})"
+        candidate = f"{base[:31-len(suffix)]}{suffix}"
+        n += 1
+    used.add(candidate)
+    return candidate
+
+
+def _normalise_subject(value):
+    s = str(value or "").strip()
+    return re.sub(r"\s*\(lab[^)]*\)", "", s, flags=re.IGNORECASE).lower().strip()
+
+
+def _resolve_class_index(class_keys, member):
+    name = str(member.get("className", "") or "").replace("Class ", "").strip()
+    if name and name in class_keys:
+        return class_keys.index(name)
+    try:
+        return int(member.get("classIdx", -1))
+    except (TypeError, ValueError):
+        return -1
+
+
+def _teachers_for_cell(cidx, cell_value, stored):
+    """Return every teacher responsible for a rendered timetable cell."""
+    if cell_value in (None, 0) or str(cell_value).strip().lower() in ("", "0", "free"):
+        return set()
+    norm = _normalise_subject(cell_value)
+    teachers = set()
+    organized = stored.get("organized", {}) if isinstance(stored, dict) else {}
+    class_keys = list(organized.keys())
+    if 0 <= cidx < len(class_keys):
+        for row in organized.get(class_keys[cidx], []):
+            if _normalise_subject(row.get("subject", "")) == norm:
+                name = str(row.get("teacher", "")).strip()
+                if name:
+                    teachers.add(name)
+    bundles = []
+    if isinstance(stored, dict):
+        bundles.extend(stored.get("auto_bundles", []) or [])
+        bundles.extend(stored.get("sync_groups", []) or [])
+    for bundle in bundles:
+        if not isinstance(bundle, dict):
+            continue
+        display = bundle.get("display_name") or bundle.get("name") or ""
+        if _normalise_subject(display) != norm:
+            continue
+        for member in bundle.get("members", []) or []:
+            if _resolve_class_index(class_keys, member) == cidx:
+                name = str(member.get("teacherName", "")).strip()
+                if name:
+                    teachers.add(name)
+    return teachers
+
+
+def _is_lab_cell(cidx, cell_value, stored):
+    text = str(cell_value or "").strip().lower()
+    if re.search(r"\(\s*lab\b", text):
+        return True
+    organized = stored.get("organized", {}) if isinstance(stored, dict) else {}
+    class_keys = list(organized.keys())
+    if 0 <= cidx < len(class_keys):
+        norm = _normalise_subject(cell_value)
+        return any(
+            _normalise_subject(row.get("subject", "")) == norm
+            and str(row.get("type", "theory")).lower().strip() == "lab"
+            for row in organized.get(class_keys[cidx], [])
+        )
+    return False
+
+
+def _fixed_entry_for_slot(meta, class_idx, slot_idx):
+    fixed = meta.get("fixed_slots", {}) if isinstance(meta, dict) else {}
+    entries = fixed.get(str(class_idx), {}) if isinstance(fixed, dict) else {}
+    periods = int(meta.get("periods", 0) or 0) if isinstance(meta, dict) else 0
+    for raw_slot, info in (entries or {}).items():
+        try:
+            flat = int(raw_slot)
+        except (TypeError, ValueError):
+            try:
+                d, p = map(int, str(raw_slot).split("-", 1))
+                flat = d * periods + p
+            except Exception:
+                continue
+        if flat == slot_idx and isinstance(info, dict) and info.get("label") and info.get("teacher_id", "__none__") != "__none__":
+            return info
+    return None
 
 
 # ── Clear stale session directories on startup ───────────────────────────────
@@ -224,20 +355,32 @@ def upload_pdf():
     if not file or file.filename == '':
         return "No file selected", 400
 
-    pdf_path = os.path.join(app.config['UPLOAD_FOLDER'], "uploaded_schedule.pdf")
-    file.save(pdf_path)
-    
+    pdf_path = spath(f"upload_{uuid.uuid4().hex}.pdf")
     try:
-        raw_data = get_solver_data_from_pdf(pdf_path) 
+        header = file.stream.read(1024)
+        file.stream.seek(0)
+        if b"%PDF-" not in header:
+            return "The uploaded file is not a valid PDF.", 400
+        file.save(pdf_path)
+        raw_data = get_solver_data_from_pdf(pdf_path)
+        if not isinstance(raw_data, dict) or not (
+            raw_data.get("class_teacher_periods") or raw_data.get("lab_teacher_periods")
+        ):
+            return "AI extraction returned no timetable data.", 422
         with open(spath("last_extraction.json"), "w") as f:
             json.dump(raw_data, f)
 
-        return redirect(url_for('generate'))
+        return redirect(url_for("generate"))
         
     except Exception as e:
-        import traceback
         print(traceback.format_exc())
-        return f"AI Extraction Failed: {str(e)}", 500
+        return f"AI Extraction Failed: {escape(str(e))}", 500
+    finally:
+        try:
+            if os.path.exists(pdf_path):
+                os.remove(pdf_path)
+        except OSError:
+            pass
 
 @app.route("/upload-xml", methods=["POST"])
 def upload_xml():
@@ -253,10 +396,8 @@ def upload_xml():
         return jsonify({"status": "error", "message": "File must be XML"}), 400
     
     try:
-        xml_path = os.path.join(app.config['UPLOAD_FOLDER'], "uploaded_schedule.xml")
+        xml_path = spath(f"upload_{uuid.uuid4().hex}.xml")
         file.save(xml_path)
-        
-        # Parse XML
         data = parse_xml_timetable(xml_path)
         
         # Save as temp_web_data for /generate to use
@@ -266,10 +407,16 @@ def upload_xml():
         return jsonify({
             "status": "success",
             "message": "XML uploaded and parsed successfully",
-            "redirect": "/generate"
+            "redirect": url_for("generate")
         })
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 400
+    finally:
+        try:
+            if os.path.exists(xml_path):
+                os.remove(xml_path)
+        except OSError:
+            pass
 
     
 @app.route("/generate")
@@ -303,7 +450,11 @@ def generate():
                 display_data.append({
                     "class": f"Class {class_id}",
                     "subject": subj,
-                    "teacher": teacher_map.get(t_id, {}).get('Name', f"S{t_id}"),
+                    "teacher": (
+    teacher_map.get(t_id, {}).get("Name")
+    or teacher_map.get(t_id, {}).get("name")
+    or f"S{t_id}"
+),
                     "type": "Theory",
                     "periods": p_val,
                     "split_children_json": "[]"
