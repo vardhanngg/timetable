@@ -531,26 +531,31 @@ function getBlock(classIdx, si) {
     return block;
 }
 
+function teachersForCell(classIdx, si) {
+    const key = `${classIdx}-${si}`;
+    const teachers = [];
+    Object.entries(TEACHER_SLOT_MAP).forEach(([tname, slots]) => {
+        if (slots.includes(key)) teachers.push(tname);
+    });
+    return teachers;
+}
+
 function checkSwapSafe(classIdx, si1, si2, si1IsFree, si2IsFree) {
     if (si1IsFree && si2IsFree) return false;
-    let teacher1 = null, teacher2 = null;
-    Object.entries(TEACHER_SLOT_MAP).forEach(([tname, slots]) => {
-        if (slots.includes(`${classIdx}-${si1}`)) teacher1 = tname;
-        if (slots.includes(`${classIdx}-${si2}`)) teacher2 = tname;
-    });
-    const busy = (t, slot) => {
-        if (!t || !TEACHER_SLOTS[t]) return false;
+    const teachers1 = teachersForCell(classIdx, si1);
+    const teachers2 = teachersForCell(classIdx, si2);
+    const busy = (teachers, slot) => teachers.some(t => {
+        if (!TEACHER_SLOTS[t]) return false;
         for (let c = 0; c < NUM_CLASSES; c++) {
             if (c === classIdx) continue;
             if (TEACHER_SLOTS[t].has(`${c}-${slot}`)) return true;
         }
         return false;
-    };
-    if (si1IsFree) return !busy(teacher2, si1);
-    if (si2IsFree) return !busy(teacher1, si2);
-    return !busy(teacher1, si2) && !busy(teacher2, si1);
+    });
+    if (si1IsFree) return !busy(teachers2, si1);
+    if (si2IsFree) return !busy(teachers1, si2);
+    return !busy(teachers1, si2) && !busy(teachers2, si1);
 }
-
 function checkBlockSwapSafe(classIdx, srcBlock, destSi) {
     const blockSize  = srcBlock.length;
     const destDay    = Math.floor(destSi / NUM_PERIODS);
@@ -648,32 +653,80 @@ function cancelSwapMode() {
         });
 }
 
-function doSwap(classIdx, srcBlock, destBlock) {
-    srcBlock.forEach((si1, i) => {
-        const si2 = destBlock[i];
-        const tmp = TIMETABLE[si1][classIdx];
-        TIMETABLE[si1][classIdx] = TIMETABLE[si2][classIdx];
-        TIMETABLE[si2][classIdx] = tmp;
-    });
-    srcBlock.forEach((si1, i) => {
-        const si2 = destBlock[i];
-        Object.entries(TEACHER_SLOT_MAP).forEach(([tname, slots]) => {
-            const i1 = slots.indexOf(`${classIdx}-${si1}`);
-            const i2 = slots.indexOf(`${classIdx}-${si2}`);
-            if (i1 !== -1) { slots[i1] = `${classIdx}-${si2}`; TEACHER_SLOTS[tname].delete(`${classIdx}-${si1}`); TEACHER_SLOTS[tname].add(`${classIdx}-${si2}`); }
-            if (i2 !== -1) { slots[i2] = `${classIdx}-${si1}`; TEACHER_SLOTS[tname].delete(`${classIdx}-${si2}`); TEACHER_SLOTS[tname].add(`${classIdx}-${si1}`); }
-        });
-    });
-    srcBlock.forEach((si1, i) => {
-        const si2 = destBlock[i];
-        fetch('/swap-slots', { method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({class_idx: classIdx, slot1: si1, slot2: si2}) }).catch(()=>{});
-    });
-    cancelSwapMode();
-    [...srcBlock, ...destBlock].forEach(si => updateCellDOM(classIdx, si));
-    recomputeConflicts();
-}
+async function doSwap(classIdx, srcBlock, destBlock) {
+    // Validate the whole move on the server before changing browser state.
+    // This prevents a rejected swap from leaving the UI different from the
+    // saved timetable.
+    if (srcBlock.length !== destBlock.length) {
+        alert('Swap failed: source and destination blocks must have the same size.');
+        return;
+    }
+    try {
+        for (let i = 0; i < srcBlock.length; i++) {
+            const si1 = srcBlock[i], si2 = destBlock[i];
+            const res = await fetch('/swap-slots', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({class_idx: classIdx, slot1: si1, slot2: si2})
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data.status !== 'success') {
+                throw new Error(data.message || 'The server rejected this swap.');
+            }
+        }
 
+        // Only after the server accepts every pair do we update the local model.
+        const before = srcBlock.map(si => TIMETABLE[si][classIdx]);
+        const destination = destBlock.map(si => TIMETABLE[si][classIdx]);
+        srcBlock.forEach((si1, i) => {
+            TIMETABLE[si1][classIdx] = destination[i];
+        });
+        destBlock.forEach((si2, i) => {
+            TIMETABLE[si2][classIdx] = before[i];
+        });
+
+        // Rebuild teacher ownership for affected positions as a SET swap.
+        // This correctly handles split cells with multiple teachers.
+        const affected = new Set([...srcBlock, ...destBlock]);
+        const keyFor = si => `${classIdx}-${si}`;
+        const teachersAt = si => teachersForCell(classIdx, si);
+        const srcTeachers = Object.fromEntries(srcBlock.map(si => [si, teachersAt(si)]));
+        const destTeachers = Object.fromEntries(destBlock.map(si => [si, teachersAt(si)]));
+        const allAffectedTeachers = new Set([
+            ...srcBlock.flatMap(si => srcTeachers[si] || []),
+            ...destBlock.flatMap(si => destTeachers[si] || [])
+        ]);
+
+        allAffectedTeachers.forEach(tname => {
+            const slots = TEACHER_SLOT_MAP[tname] || [];
+            affected.forEach(si => {
+                const key = keyFor(si);
+                let idx;
+                while ((idx = slots.indexOf(key)) !== -1) slots.splice(idx, 1);
+                if (TEACHER_SLOTS[tname]) TEACHER_SLOTS[tname].delete(key);
+            });
+        });
+
+        srcBlock.forEach((si1, i) => {
+            const si2 = destBlock[i];
+            (srcTeachers[si1] || []).forEach(tname => {
+                (TEACHER_SLOT_MAP[tname] ||= []).push(keyFor(si2));
+                (TEACHER_SLOTS[tname] ||= new Set()).add(keyFor(si2));
+            });
+            (destTeachers[si2] || []).forEach(tname => {
+                (TEACHER_SLOT_MAP[tname] ||= []).push(keyFor(si1));
+                (TEACHER_SLOTS[tname] ||= new Set()).add(keyFor(si1));
+            });
+        });
+
+        cancelSwapMode();
+        [...affected].forEach(si => updateCellDOM(classIdx, si));
+        recomputeConflicts();
+    } catch (err) {
+        alert(err.message || 'Swap failed. No changes were made.');
+        cancelSwapMode();
+    }
+}
 function updateCellDOM(classIdx, si) {
     const cell = document.getElementById(`cell-${classIdx}-${si}`);
     if (!cell) return;
