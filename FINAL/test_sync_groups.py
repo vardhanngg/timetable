@@ -126,7 +126,7 @@ class SyncGroupSolverTests(unittest.TestCase):
         subjects = {
             0: {
                 0: [{"name": "Language", "hours": 1, "type": "theory"}],
-                1000: [{"name": "Free", "hours": 1, "type": "theory"}],
+                1000: [{"name": "Free", "hours": 2, "type": "theory"}],
             },
             1: {
                 1: [{"name": "French", "hours": 1, "type": "theory"}],
@@ -145,7 +145,7 @@ class SyncGroupSolverTests(unittest.TestCase):
             ],
         }]
         timetable = solver.generate_timetable_ortools(
-            2, 1, 2, teachers, credits, {}, subjects,
+            2, 1, 3, teachers, credits, {}, subjects,
             time_limit_seconds=10,
             teacher_unavailability={"1": [0]},
             elective_bundles=bundles,
