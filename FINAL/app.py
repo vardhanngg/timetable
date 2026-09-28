@@ -341,7 +341,7 @@ def _validate_run_solver_payload(stored, fixed_data, unavail_data, bundles):
                 continue
             if teacher_id in ("__free__", "__event__"):
                 continue
-            if not re.fullmatch(r"-?\\d+", teacher_id):
+            if not re.fullmatch(r"-?\d+", teacher_id):
                 raise ValueError("Fixed-slot teacher ID is invalid.")
             tid = int(teacher_id)
             matches = [
