@@ -162,14 +162,6 @@ SESSIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "session
 os.makedirs(SESSIONS_DIR, exist_ok=True)
 
 
-def _sid():
-    """Get (or create) this browser's private session id, stored in a signed cookie."""
-    if "sid" not in session:
-        session["sid"] = uuid.uuid4().hex
-        session.permanent = True
-    return session["sid"]
-
-
 _SID_RE = re.compile(r"^[0-9a-f]{32}$")
 
 def _sid():
