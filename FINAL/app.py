@@ -1922,119 +1922,88 @@ def run_final_solver():
 @app.route("/swap-slots", methods=["POST"])
 def swap_slots():
     try:
-        data      = request.get_json()
-        class_idx = int(data['class_idx'])
-        si1       = int(data['slot1'])
-        si2       = int(data['slot2'])
-
-        if not os.path.exists(spath("generated_timetable.json")):
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({"status": "error", "message": "Invalid JSON payload."}), 400
+        try:
+            class_idx, si1, si2 = int(data["class_idx"]), int(data["slot1"]), int(data["slot2"])
+        except (KeyError, TypeError, ValueError):
+            return jsonify({"status": "error", "message": "class_idx, slot1 and slot2 are required integers."}), 400
+        if si1 == si2:
+            return jsonify({"status": "success"})
+        required = ("generated_timetable.json", "generated_metadata.json", "last_extraction.json")
+        if not all(os.path.exists(spath(fn)) for fn in required):
             return jsonify({"status": "error", "message": "No timetable found"}), 404
-
         with open(spath("generated_timetable.json")) as f:
             timetable = json.load(f)
+        with open(spath("generated_metadata.json")) as f:
+            meta = json.load(f)
+        with open(spath("last_extraction.json")) as f:
+            stored = json.load(f)
 
-        if not (0 <= si1 < len(timetable)) or not (0 <= si2 < len(timetable)):
-            return jsonify({"status": "error", "message": "Slot index out of range"}), 400
-        if class_idx < 0 or class_idx >= len(timetable[si1]) or class_idx >= len(timetable[si2]):
+        days, periods = int(meta["days"]), int(meta["periods"])
+        num_classes = int(meta["num_classes"])
+        total_slots = days * periods
+        if not (0 <= class_idx < num_classes):
             return jsonify({"status": "error", "message": "Class index out of range"}), 400
+        if not (0 <= si1 < total_slots) or not (0 <= si2 < total_slots):
+            return jsonify({"status": "error", "message": "Slot index out of range"}), 400
+        if len(timetable) < total_slots or any(
+            not isinstance(timetable[s], list) or len(timetable[s]) < num_classes for s in (si1, si2)
+        ):
+            return jsonify({"status": "error", "message": "Malformed timetable data."}), 500
 
-        # ── Server-side validation ──────────────────────────────────────────
-        # This endpoint used to swap the two cells with zero validation,
-        # relying entirely on the frontend's own safety checks before it ever
-        # sent the request. Any direct call here (or a bug in the frontend
-        # logic) could double-book a teacher across classes or duplicate a
-        # subject on the same day with nothing to stop it. Reject those cases
-        # server-side too, using the same subject→teacher lookup
-        # success_summary() already builds for conflict display.
-        def is_real(val):
-            return val not in (0, None) and str(val).strip().lower() not in ('', 'free', '0')
+        val1, val2 = timetable[si1][class_idx], timetable[si2][class_idx]
+        if _fixed_entry_for_slot(meta, class_idx, si1) or _fixed_entry_for_slot(meta, class_idx, si2):
+            return jsonify({"status": "error", "message": "Fixed slots cannot be moved. Clear the fixed slot and regenerate."}), 409
 
-        val1 = timetable[si1][class_idx]  # currently at si1, would move to si2
-        val2 = timetable[si2][class_idx]  # currently at si2, would move to si1
+        # A lab occupies a consecutive block; the endpoint receives individual pairs,
+        # so never permit a partial lab move through this API.
+        if _is_lab_cell(class_idx, val1, stored) or _is_lab_cell(class_idx, val2, stored):
+            return jsonify({"status": "error", "message": "Lab blocks cannot be moved with the single-slot swap."}), 409
 
-        if is_real(val1) or is_real(val2):
-            teacher_by_class_subject = {}
-            if os.path.exists(spath("last_extraction.json")):
-                with open(spath("last_extraction.json")) as f:
-                    stored = json.load(f)
-                organized = stored.get('organized', {})
-                for cidx, cname in enumerate(organized.keys()):
-                    for t in organized[cname]:
-                        subj = str(t.get('subject', ''))
-                        teacher_by_class_subject[(cidx, subj.lower().strip())] = t.get('teacher')
-                        stripped = re.sub(r'\s*\(lab[^)]*\)', '', subj, flags=re.IGNORECASE).lower().strip()
-                        if stripped != subj.lower().strip():
-                            teacher_by_class_subject[(cidx, stripped)] = t.get('teacher')
+        def real(v):
+            return v not in (0, None) and str(v).strip().lower() not in ("", "free", "0")
 
-            def teacher_for(cidx, val):
-                if not is_real(val):
-                    return None
-                s = str(val).strip()
-                norm = re.sub(r'\s*\(lab[^)]*\)', '', s, flags=re.IGNORECASE).lower().strip()
-                return teacher_by_class_subject.get((cidx, s.lower())) or teacher_by_class_subject.get((cidx, norm))
-
-            def teacher_busy_elsewhere(teacher_name, slot, exclude_class):
-                if not teacher_name:
-                    return False
-                row = timetable[slot]
-                for other_cidx, cell in enumerate(row):
-                    if other_cidx == exclude_class:
-                        continue
-                    if teacher_for(other_cidx, cell) == teacher_name:
-                        return True
+        def teacher_busy(teacher, slot):
+            if not teacher:
                 return False
+            return any(
+                other != class_idx and teacher in _teachers_for_cell(other, cell, stored)
+                for other, cell in enumerate(timetable[slot])
+            )
 
-            periods_per_day = None
-            if os.path.exists(spath("generated_metadata.json")):
-                with open(spath("generated_metadata.json")) as f:
-                    periods_per_day = json.load(f).get('periods')
+        if real(val1) or real(val2):
+            for teacher in _teachers_for_cell(class_idx, val1, stored):
+                if teacher_busy(teacher, si2):
+                    return jsonify({"status": "error", "message": f"Can't swap: {teacher} already teaches another class at that time."}), 409
+            for teacher in _teachers_for_cell(class_idx, val2, stored):
+                if teacher_busy(teacher, si1):
+                    return jsonify({"status": "error", "message": f"Can't swap: {teacher} already teaches another class at that time."}), 409
 
-            def subject_elsewhere_same_day(cidx, subject_val, target_slot, vacated_slot):
-                if not is_real(subject_val) or not periods_per_day:
+            def duplicate_same_day(value, target, vacated):
+                if not real(value):
                     return False
-                day = target_slot // periods_per_day
-                day_start = day * periods_per_day
-                for p in range(periods_per_day):
-                    s = day_start + p
-                    if s == target_slot or s == vacated_slot:
-                        continue
-                    if s < len(timetable) and str(timetable[s][cidx]).strip().lower() == str(subject_val).strip().lower():
-                        return True
-                return False
+                day_start = (target // periods) * periods
+                return any(
+                    slot not in (target, vacated)
+                    and str(timetable[slot][class_idx]).strip().lower() == str(value).strip().lower()
+                    for slot in range(day_start, day_start + periods)
+                )
+            if duplicate_same_day(val1, si2, si1):
+                return jsonify({"status": "error", "message": f"Can't swap: '{val1}' would appear twice on the same day for this class."}), 409
+            if duplicate_same_day(val2, si1, si2):
+                return jsonify({"status": "error", "message": f"Can't swap: '{val2}' would appear twice on the same day for this class."}), 409
 
-            t1 = teacher_for(class_idx, val1)
-            t2 = teacher_for(class_idx, val2)
-
-            if teacher_busy_elsewhere(t1, si2, class_idx):
-                return jsonify({"status": "error",
-                                "message": f"Can't swap: {t1} already teaches another class at that time."}), 409
-            if teacher_busy_elsewhere(t2, si1, class_idx):
-                return jsonify({"status": "error",
-                                "message": f"Can't swap: {t2} already teaches another class at that time."}), 409
-            if subject_elsewhere_same_day(class_idx, val1, si2, si1):
-                return jsonify({"status": "error",
-                                "message": f"Can't swap: '{val1}' would appear twice on the same day for this class."}), 409
-            if subject_elsewhere_same_day(class_idx, val2, si1, si2):
-                return jsonify({"status": "error",
-                                "message": f"Can't swap: '{val2}' would appear twice on the same day for this class."}), 409
-
-        # Swap the two slots for the given class
-        timetable[si1][class_idx], timetable[si2][class_idx] = \
-            timetable[si2][class_idx], timetable[si1][class_idx]
-
+        timetable[si1][class_idx], timetable[si2][class_idx] = val2, val1
         with open(spath("generated_timetable.json"), "w") as f:
             json.dump(timetable, f)
-
         return jsonify({"status": "success"})
-    except Exception as e:
-        import traceback; print(traceback.format_exc())
-        return jsonify({"status": "error", "message": str(e)}), 500
+    except Exception:
+        print(traceback.format_exc())
+        return jsonify({"status": "error", "message": "Swap failed due to an internal server error."}), 500
 
 if __name__ == "__main__":
-    # debug=True enables Werkzeug's interactive debugger, which allows
-    # arbitrary code execution from the browser if this port is ever reachable
-    # by anyone other than you. It was hardcoded on before — now it's opt-in
-    # via an explicit environment variable, and off by default.
     debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
     port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port, debug=debug_mode)
+    app.run(host="0.0.0.0", port=port, debug=debug_mode)
