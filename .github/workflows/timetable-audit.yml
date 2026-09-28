@@ -13,9 +13,33 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install solver test dependency
+        run: python -m pip install --disable-pip-version-check ortools==9.15.6755
+
       - name: Compile Python sources
         run: |
-          python -m py_compile FINAL/app.py FINAL/adapter.py FINAL/extractor.py FINAL/solver.py FINAL/config.py
+          python -m py_compile FINAL/app.py FINAL/adapter.py FINAL/extractor.py FINAL/solver.py FINAL/config.py FINAL/test_sync_groups.py
+
+      - name: Run Sync Group regression tests
+        id: sync_tests
+        continue-on-error: true
+        run: |
+          set +e
+          python -m unittest FINAL/test_sync_groups.py -v > sync-test-output.txt 2>&1
+          status=$?
+          cat sync-test-output.txt
+          exit $status
+
+      - name: Upload Sync Group test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sync-group-test-output
+          path: sync-test-output.txt
+      - name: Fail if Sync Group tests failed
+        if: steps.sync_tests.outcome == 'failure'
+        run: exit 1
+
       - name: Validate required templates and deployment files
         run: |
           test -f FINAL/templates/upload.html
