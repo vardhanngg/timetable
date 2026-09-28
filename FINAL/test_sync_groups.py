@@ -21,8 +21,14 @@ def build_shared_teacher_case():
         1: {0: 2},
     }
     subject_map = {
-        0: {0: [{"name": "Mathematics", "hours": 2, "type": "theory"}]},
-        1: {0: [{"name": "Mathematics", "hours": 2, "type": "theory"}]},
+        0: {
+            0: [{"name": "Mathematics", "hours": 2, "type": "theory"}],
+            1000: [{"name": "Free", "hours": 2, "type": "theory"}],
+        },
+        1: {
+            0: [{"name": "Mathematics", "hours": 2, "type": "theory"}],
+            1001: [{"name": "Free", "hours": 2, "type": "theory"}],
+        },
     }
     bundle = [{
         "name": "shared-maths",
@@ -77,10 +83,14 @@ class SyncGroupSolverTests(unittest.TestCase):
             1: {1: 2, 2: 2},
         }
         subjects = {
-            0: {0: [{"name": "Language", "hours": 2, "type": "theory"}]},
+            0: {
+                0: [{"name": "Language", "hours": 2, "type": "theory"}],
+                1000: [{"name": "Free", "hours": 4, "type": "theory"}],
+            },
             1: {
                 1: [{"name": "French", "hours": 2, "type": "theory"}],
                 2: [{"name": "Telugu", "hours": 2, "type": "theory"}],
+                1001: [{"name": "Free", "hours": 2, "type": "theory"}],
             },
         }
         bundles = [{
@@ -114,10 +124,14 @@ class SyncGroupSolverTests(unittest.TestCase):
         }
         credits = {0: {0: 1}, 1: {1: 1, 2: 1}}
         subjects = {
-            0: {0: [{"name": "Language", "hours": 1, "type": "theory"}]},
+            0: {
+                0: [{"name": "Language", "hours": 1, "type": "theory"}],
+                1000: [{"name": "Free", "hours": 1, "type": "theory"}],
+            },
             1: {
                 1: [{"name": "French", "hours": 1, "type": "theory"}],
                 2: [{"name": "Telugu", "hours": 1, "type": "theory"}],
+                1001: [{"name": "Free", "hours": 1, "type": "theory"}],
             },
         }
         bundles = [{
