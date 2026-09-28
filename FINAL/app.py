@@ -290,6 +290,112 @@ def _fixed_entry_for_slot(meta, class_idx, slot_idx):
         if flat == slot_idx and isinstance(info, dict) and info.get("label") and info.get("teacher_id", "__none__") != "__none__":
             return info
     return None
+def _slot_to_flat(slot_key, periods, days):
+    """Convert a flat slot or D-P slot key to a validated flat index."""
+    try:
+        text = str(slot_key)
+        if "-" in text:
+            d, p = map(int, text.split("-", 1))
+            if not (0 <= d < days and 0 <= p < periods):
+                return None
+            return d * periods + p
+        flat = int(text)
+        return flat if 0 <= flat < days * periods else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _validate_run_solver_payload(stored, fixed_data, unavail_data, bundles):
+    """Validate untrusted solver JSON before it reaches adapter/CP-SAT."""
+    organized = stored.get("organized", {})
+    if not isinstance(organized, dict) or not organized:
+        raise ValueError("No valid class data is available for solving.")
+    days, periods = _validate_week_config(stored.get("days"), stored.get("periods"))
+    class_keys = list(organized.keys())
+    num_classes = len(class_keys)
+    total_slots = days * periods
+
+    if len(fixed_data) > 5000:
+        raise ValueError("Too many fixed slots.")
+    for raw_cls, slots in fixed_data.items():
+        try:
+            cidx = int(raw_cls)
+        except (TypeError, ValueError):
+            raise ValueError("Fixed-slot class index is invalid.")
+        if not (0 <= cidx < num_classes) or not isinstance(slots, dict):
+            raise ValueError("Fixed-slot data is invalid.")
+        if len(slots) > total_slots:
+            raise ValueError("Too many fixed slots for a class.")
+
+        rows = organized.get(class_keys[cidx], [])
+        for raw_slot, info in slots.items():
+            if _slot_to_flat(raw_slot, periods, days) is None:
+                raise ValueError("Fixed-slot period is out of range.")
+            if not isinstance(info, dict):
+                raise ValueError("Fixed-slot entry is invalid.")
+            label = str(info.get("label", "") or "").strip()
+            teacher_id = str(info.get("teacher_id", "") or "").strip()
+            if len(label) > 160:
+                raise ValueError("Fixed-slot label is too long.")
+            if not label or teacher_id == "__none__":
+                continue
+            if teacher_id in ("__free__", "__event__"):
+                continue
+            if not re.fullmatch(r"-?d+", teacher_id):
+                raise ValueError("Fixed-slot teacher ID is invalid.")
+            tid = int(teacher_id)
+            matches = [
+                row for row in rows
+                if int(row.get("teacher_id", -999999)) == tid
+                and _normalise_subject(row.get("subject", "")) == _normalise_subject(label)
+            ]
+            if not matches:
+                raise ValueError(
+                    f"Fixed slot '{label}' does not belong to the selected class/teacher."
+                )
+
+    if len(unavail_data) > 500:
+        raise ValueError("Too many teacher-unavailability entries.")
+    for raw_tid, slots in unavail_data.items():
+        if not re.fullmatch(r"-?d+", str(raw_tid)):
+            raise ValueError("Teacher-unavailability ID is invalid.")
+        if not isinstance(slots, list) or len(slots) > total_slots:
+            raise ValueError("Teacher-unavailability slots are invalid.")
+        for slot in slots:
+            if _slot_to_flat(slot, periods, days) is None:
+                raise ValueError("Teacher-unavailability period is out of range.")
+
+    if len(bundles) > 200:
+        raise ValueError("Too many sync/elective groups.")
+    for bundle in bundles:
+        if not isinstance(bundle, dict):
+            raise ValueError("Sync/elective group is invalid.")
+        try:
+            k = int(bundle.get("periodsPerWeek", 1))
+        except (TypeError, ValueError):
+            raise ValueError("Sync/elective group period count is invalid.")
+        if not (1 <= k <= total_slots):
+            raise ValueError("Sync/elective group period count is out of range.")
+        members = bundle.get("members", [])
+        if not isinstance(members, list) or len(members) > num_classes * 4:
+            raise ValueError("Sync/elective group members are invalid.")
+        for member in members:
+            if not isinstance(member, dict):
+                raise ValueError("Sync/elective group member is invalid.")
+            try:
+                cidx = int(member.get("classIdx", -1))
+            except (TypeError, ValueError):
+                raise ValueError("Sync/elective group class index is invalid.")
+            if not (0 <= cidx < num_classes):
+                raise ValueError("Sync/elective group class index is out of range.")
+            if not str(member.get("subject", "") or "").strip():
+                raise ValueError("Sync/elective group subject is required.")
+            tid = member.get("teacherId")
+            if tid is not None and tid != "" and not re.fullmatch(r"-?d+", str(tid)):
+                raise ValueError("Sync/elective group teacher ID is invalid.")
+
+    return days, periods
+
 
 
 # ── Clear stale session directories on startup ───────────────────────────────
@@ -1563,6 +1669,10 @@ def run_final_solver():
 
         with open(spath("last_extraction.json"), "r") as f:
             stored = json.load(f)
+        try:
+            _validate_run_solver_payload(stored, fixed_data, unavail_data, elective_bundles)
+        except ValueError as e:
+            return jsonify({"status": "error", "message": str(e)}), 400
 
         # Merge auto_bundles from split rows (persisted in session) with any
         # user-provided bundles from the sync group UI. User bundles take priority
