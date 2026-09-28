@@ -6,6 +6,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import solver
 
+APP_SOURCE = (Path(__file__).resolve().parent / "app.py").read_text(encoding="utf-8")
+FIXED_SETUP_SOURCE = (Path(__file__).resolve().parent / "templates" / "fixed_setup.html").read_text(encoding="utf-8")
+
 
 def build_shared_teacher_case():
     teachers = {
@@ -34,6 +37,14 @@ def build_shared_teacher_case():
 
 
 class SyncGroupSolverTests(unittest.TestCase):
+
+    def test_sync_group_persistence_and_validation_hardening(self):
+        self.assertIn('re.fullmatch(r"-?\\d+", teacher_id)', APP_SOURCE)
+        self.assertIn('re.fullmatch(r"-?\\d+", str(raw_tid))', APP_SOURCE)
+        self.assertIn('re.fullmatch(r"-?\\d+", str(tid))', APP_SOURCE)
+        self.assertNotIn("Manually-created sync group(s) removed", FIXED_SETUP_SOURCE)
+        self.assertIn("localStorage.getItem('timetable_sync_groups')", FIXED_SETUP_SOURCE)
+
     def test_shared_teacher_syncs_classes_in_cp_sat(self):
         teachers, credits, subjects, bundles = build_shared_teacher_case()
         timetable = solver.generate_timetable_ortools(
