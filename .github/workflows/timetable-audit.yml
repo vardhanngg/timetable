@@ -1,8 +1,8 @@
 name: Timetable Audit
 
 on:
-  push:
-    branches: ["audit/fix-full-app"]
+  pull_request:
+    branches: ["main"]
   workflow_dispatch:
 
 jobs:
