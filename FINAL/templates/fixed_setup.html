@@ -2030,13 +2030,6 @@ function loadSession() {
     // previous session with different class order).
     const autoBundleNames = new Set((AUTO_BUNDLES || []).map(b => b.name));
 
-    // Keep only auto-bundle groups (discard any manually-created ones from localStorage)
-    const manualGroups = syncGroups.filter(g => !autoBundleNames.has(g.name));
-    if (manualGroups.length > 0) {
-        syncGroups = syncGroups.filter(g => autoBundleNames.has(g.name));
-        showToast(`ℹ️ Manually-created sync group(s) removed: "${manualGroups.map(g=>g.name).join('", "')}". Split-row blocks are auto-managed — no manual groups needed.`, 'info');
-    }
-
     // Now add/refresh all auto-bundles from the server
     if (AUTO_BUNDLES && AUTO_BUNDLES.length > 0) {
         let changed = 0;
