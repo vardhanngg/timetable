@@ -233,31 +233,13 @@ def generate_timetable_ortools(
                 model.Add(sum(vars_for_entry) == entry["hours"])
 
     # ── STEP 6: Teacher conflict — one class per teacher per slot ─────────────
-    # Exception: sync groups (both "merged" AND "split") may have the same teacher
-    # serving multiple classes at the same sync slot — e.g. S7 teaches Awareness
-    # to Class 2 and Class 3 simultaneously (different rooms, same time).
-    # We collect those teachers and exempt them from AddAtMostOne ONLY for
-    # the slots that the sync group's indicator variables actually choose.
-    # Since we don't know those slots yet (solver picks them), we defer:
-    # instead we add a softer constraint: for synced teacher-slot pairs,
-    # allow AT MOST len(members_with_that_teacher) vars to be 1.
+    # Normal rule is enforced after Sync Group indicators are created in STEP 7b.
+    # We intentionally do NOT add AddAtMostOne here because a shared teacher in a
+    # merged Sync Group must be allowed to serve the synchronized member classes
+    # simultaneously — but only at the slots selected by that Sync Group.
     #
-    # Implementation: build a map of (tid → max_simultaneous_classes) from
-    # sync groups, then use AddAtMost(max) instead of AddAtMostOne.
-    teacher_sync_max = {}   # tid → max simultaneous classes allowed (default 1)
-    if elective_bundles:
-        for bundle in elective_bundles:
-            members = bundle.get("members", [])
-            # Count how many members share each teacher
-            tid_count = {}
-            for m in members:
-                tid_str = str(m.get("teacherId") or "")
-                if tid_str and tid_str.lstrip("-").isdigit():
-                    tid_count[int(tid_str)] = tid_count.get(int(tid_str), 0) + 1
-            for tid, cnt in tid_count.items():
-                if cnt > 1:
-                    teacher_sync_max[tid] = max(teacher_sync_max.get(tid, 1), cnt)
-
+    # Teachers already occupied by fixed slots, labs, or explicit unavailability
+    # are blocked immediately.
     slot_teacher_vars = {}
     for cidx in range(No_of_classes):
         for slot, slot_vars in assign_vars[cidx].items():
@@ -265,53 +247,10 @@ def generate_timetable_ortools(
                 tid = class_entries[cidx][eidx]["teacher_id"]
                 slot_teacher_vars.setdefault((slot, tid), []).append(v)
 
-    # Block vars for teachers already busy at a slot (from fixed/labs)
     for tid, busy_slots in teacher_busy.items():
         for slot in busy_slots:
             for v in slot_teacher_vars.get((slot, tid), []):
                 model.Add(v == 0)
-
-    # At most N classes per teacher per slot (N=1 normally, N>1 for sync-group shared teachers)
-    # For sync-group shared teachers we allow N simultaneous classes, but ONLY when the
-    # sync-group bundle indicator is active. Outside sync slots they must stay at 1.
-    # Build a map: (slot, tid) -> [bundle_indicator_var] for sync-linked teachers
-    sync_teacher_slot_bv = {}  # (slot, tid) -> list of bundle BoolVars active at that slot
-    if elective_bundles:
-        for bundle in elective_bundles:
-            bname = bundle.get("name", "")
-            bv_map = bundle_slot_indicators_by_name.get(bname, {})
-            members = bundle.get("members", [])
-            tid_count = {}
-            for m in members:
-                tid_str = str(m.get("teacherId") or "")
-                if tid_str and tid_str.lstrip("-").isdigit():
-                    tid = int(tid_str)
-                    tid_count[tid] = tid_count.get(tid, 0) + 1
-            shared_tids = {tid for tid, cnt in tid_count.items() if cnt > 1}
-            for slot, bv in bv_map.items():
-                for tid in shared_tids:
-                    sync_teacher_slot_bv.setdefault((slot, tid), []).append(bv)
-
-    for (slot, tid), var_list in slot_teacher_vars.items():
-        max_allowed = teacher_sync_max.get(tid, 1)
-        if len(var_list) <= 1:
-            continue
-        if max_allowed == 1:
-            model.AddAtMostOne(var_list)
-        else:
-            # Shared teacher: allow N simultaneous ONLY when a sync indicator is active
-            bvs = sync_teacher_slot_bv.get((slot, tid), [])
-            if bvs:
-                # When any sync indicator is active at this slot, allow up to max_allowed
-                # When no sync indicator is active, enforce AtMostOne
-                sync_active = model.NewBoolVar(f"sync_active_s{slot}_t{tid}")
-                model.AddMaxEquality(sync_active, bvs)
-                # If sync NOT active -> at most 1
-                model.Add(sum(var_list) <= 1).OnlyEnforceIf(sync_active.Not())
-                # If sync active -> at most max_allowed
-                model.Add(sum(var_list) <= max_allowed).OnlyEnforceIf(sync_active)
-            else:
-                model.Add(sum(var_list) <= max_allowed)
 
     # ── STEP 7: No repeat subject on same day ─────────────────────────────────
     for cidx in range(No_of_classes):
@@ -388,6 +327,11 @@ def generate_timetable_ortools(
                         continue
                     block_v = block_vars[0]
                     for tid in sub_tids:
+                        # If a sub-teacher is already busy/unavailable/fixed at this
+                        # slot, the split block itself cannot use this slot.
+                        if slot in teacher_busy.get(tid, set()):
+                            model.Add(block_v == 0)
+                            continue
                         other_vars = slot_teacher_vars.get((slot, tid), [])
                         if other_vars:
                             model.Add(sum(other_vars) == 0).OnlyEnforceIf(block_v)
@@ -447,6 +391,64 @@ def generate_timetable_ortools(
                     model.AddImplication(elec_v, bv)
 
             logging.info(f"Sync group '{bname}' ({btype}): {k} shared slots, {len(members)} members constrained")
+
+    # ── STEP 7c: Final teacher conflict constraints ───────────────────────────
+    # At this point all Sync Group slot indicators exist. A teacher may therefore
+    # exceed the normal one-class-per-slot limit only when a Sync Group that
+    # legitimately shares that teacher is active in that slot.
+    #
+    # For each teacher/slot, cap simultaneous classes at:
+    #   1 normally;
+    #   N when a sync group containing that teacher in N member classes is active.
+    # This prevents a teacher from accidentally being double-booked outside the
+    # synchronized period.
+    sync_teacher_caps = {}  # (slot, tid) -> [(bundle_indicator, member_count)]
+
+    if elective_bundles:
+        for bundle in elective_bundles:
+            bname = bundle.get("name", "")
+            bv_map = bundle_slot_indicators_by_name.get(bname, {})
+            if not bv_map:
+                continue
+            tid_count = {}
+            for m in bundle.get("members", []):
+                tid_str = str(m.get("teacherId") or "")
+                if tid_str and tid_str.lstrip("-").isdigit():
+                    tid = int(tid_str)
+                    tid_count[tid] = tid_count.get(tid, 0) + 1
+            for tid, member_count in tid_count.items():
+                if member_count < 2:
+                    continue
+                for slot, bv in bv_map.items():
+                    sync_teacher_caps.setdefault((slot, tid), []).append((bv, member_count))
+
+    for (slot, tid), var_list in slot_teacher_vars.items():
+        if len(var_list) <= 1:
+            continue
+
+        caps = sync_teacher_caps.get((slot, tid), [])
+        if not caps:
+            model.AddAtMostOne(var_list)
+            continue
+
+        max_count = max(count for _, count in caps)
+        # cap_ge_N is true iff at least one active Sync Group permits this teacher
+        # to serve N or more synchronized member classes at this slot.
+        cap_ge_vars = []
+        for count in range(2, max_count + 1):
+            ge = model.NewBoolVar(f"sync_cap_s{slot}_t{tid}_ge{count}")
+            relevant_bvs = [bv for bv, member_count in caps if member_count >= count]
+            if relevant_bvs:
+                model.AddMaxEquality(ge, relevant_bvs)
+            else:
+                model.Add(ge == 0)
+            cap_ge_vars.append(ge)
+
+        # 1 normally; +1 for permission to serve 2, +1 more for permission to
+        # serve 3, etc. This is the tightest general cap for overlapping groups.
+        model.Add(
+            sum(var_list) <= 1 + sum(cap_ge_vars)
+        )
 
     # ── STEP 8: Solve ─────────────────────────────────────────────────────────
     solver = cp_model.CpSolver()
