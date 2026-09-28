@@ -1,0 +1,29 @@
+name: Timetable Audit
+
+on:
+  push:
+    branches: ["audit/fix-full-app"]
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile Python sources
+        run: |
+          python -m py_compile FINAL/app.py FINAL/adapter.py FINAL/extractor.py FINAL/solver.py FINAL/config.py
+      - name: Validate required templates and deployment files
+        run: |
+          test -f FINAL/templates/upload.html
+          test -f FINAL/templates/view_simple.html
+          test -f FINAL/templates/fixed_setup.html
+          test -f FINAL/templates/success.html
+          test -f FINAL/requirements.txt
+          test -f render.yaml
+      - name: Check forbidden shared upload filenames
+        run: |
+          ! grep -R "uploaded_schedule\.\(pdf\|xml\)" FINAL/app.py
