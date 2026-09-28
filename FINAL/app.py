@@ -9,6 +9,7 @@ import traceback
 from flask import Flask, render_template, request, redirect, url_for, jsonify, session
 import io
 from flask import send_file
+from xml.sax.saxutils import escape
 # Custom modules
 from solver import generate_timetable, generate_timetable_with_retry
 from adapter import build_solver_inputs_from_classes
@@ -74,8 +75,10 @@ def parse_xml_timetable(xml_path):
         # Parse config
         config_elem = root.find('config')
         if config_elem is not None:
-            config['days'] = int(config_elem.findtext('days', 5))
-            config['periods'] = int(config_elem.findtext('periods', 6))
+            config["days"], config["periods"] = _validate_week_config(
+                config_elem.findtext("days", 5),
+                config_elem.findtext("periods", 6),
+            )
         
         # Parse classes and assign teacher IDs
         teacher_id_counter = 0
@@ -97,7 +100,7 @@ def parse_xml_timetable(xml_path):
                     teacher_id_counter += 1
                     teacher_id = teacher_id_counter
                     teacher_name_to_id[teacher_name] = teacher_id
-                    teacher_list[str(teacher_id)] = {"name": teacher_name}
+                    teacher_list[str(teacher_id)] = {"Name": teacher_name}
                 else:
                     teacher_id = teacher_name_to_id[teacher_name]
                 
@@ -145,6 +148,11 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 # below by giving each browser a private, cookie-identified subdirectory and
 # routing all of that file I/O through it via spath(...).
 app.secret_key = os.environ.get("FLASK_SECRET_KEY") or uuid.uuid4().hex
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get("FLASK_ENV", "").lower() == "production",
+)
 if not os.environ.get("FLASK_SECRET_KEY"):
     print("⚠️  FLASK_SECRET_KEY not set — using a random key generated for this run. "
           "Sessions won't survive a server restart. Set FLASK_SECRET_KEY in the "
@@ -154,19 +162,134 @@ SESSIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "session
 os.makedirs(SESSIONS_DIR, exist_ok=True)
 
 
+_SID_RE = re.compile(r"^[0-9a-f]{32}$")
+
 def _sid():
-    """Get (or create) this browser's private session id, stored in a signed cookie."""
-    if "sid" not in session:
-        session["sid"] = uuid.uuid4().hex
+    """Get/create a validated UUID-hex session id from the signed Flask session."""
+    raw = session.get("sid")
+    if not isinstance(raw, str) or not _SID_RE.fullmatch(raw):
+        raw = uuid.uuid4().hex
+        session["sid"] = raw
         session.permanent = True
-    return session["sid"]
+    return raw
 
 
 def spath(filename):
-    """Resolve filename to this user's private session directory, creating it if needed."""
+    """Resolve an internal filename to this browser's private session directory."""
     d = os.path.join(SESSIONS_DIR, _sid())
     os.makedirs(d, exist_ok=True)
     return os.path.join(d, filename)
+
+
+def _validate_week_config(days, periods):
+    try:
+        days, periods = int(days), int(periods)
+    except (TypeError, ValueError):
+        raise ValueError("Days and periods must be integers.")
+    if not (1 <= days <= 7):
+        raise ValueError("Working days must be between 1 and 7.")
+    if not (1 <= periods <= 24):
+        raise ValueError("Periods per day must be between 1 and 24.")
+    return days, periods
+
+
+def _safe_download_stem(value, fallback):
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", str(value or "")).strip("._-")
+    return (cleaned or fallback)[:100]
+
+
+def _safe_sheet_title(value, fallback, used):
+    base = re.sub(r'[\\/*?:\[\]]+', "_", str(value or "")).strip() or fallback
+    base = base[:31]
+    candidate = base
+    n = 1
+    while candidate in used:
+        suffix = f" ({n})"
+        candidate = f"{base[:31-len(suffix)]}{suffix}"
+        n += 1
+    used.add(candidate)
+    return candidate
+
+
+def _normalise_subject(value):
+    s = str(value or "").strip()
+    return re.sub(r"\s*\(lab[^)]*\)", "", s, flags=re.IGNORECASE).lower().strip()
+
+
+def _resolve_class_index(class_keys, member):
+    name = str(member.get("className", "") or "").replace("Class ", "").strip()
+    if name and name in class_keys:
+        return class_keys.index(name)
+    try:
+        return int(member.get("classIdx", -1))
+    except (TypeError, ValueError):
+        return -1
+
+
+def _teachers_for_cell(cidx, cell_value, stored):
+    """Return every teacher responsible for a rendered timetable cell."""
+    if cell_value in (None, 0) or str(cell_value).strip().lower() in ("", "0", "free"):
+        return set()
+    norm = _normalise_subject(cell_value)
+    teachers = set()
+    organized = stored.get("organized", {}) if isinstance(stored, dict) else {}
+    class_keys = list(organized.keys())
+    if 0 <= cidx < len(class_keys):
+        for row in organized.get(class_keys[cidx], []):
+            if _normalise_subject(row.get("subject", "")) == norm:
+                name = str(row.get("teacher", "")).strip()
+                if name:
+                    teachers.add(name)
+    bundles = []
+    if isinstance(stored, dict):
+        bundles.extend(stored.get("auto_bundles", []) or [])
+        bundles.extend(stored.get("sync_groups", []) or [])
+    for bundle in bundles:
+        if not isinstance(bundle, dict):
+            continue
+        display = bundle.get("display_name") or bundle.get("name") or ""
+        if _normalise_subject(display) != norm:
+            continue
+        for member in bundle.get("members", []) or []:
+            if _resolve_class_index(class_keys, member) == cidx:
+                name = str(member.get("teacherName", "")).strip()
+                if name:
+                    teachers.add(name)
+    return teachers
+
+
+def _is_lab_cell(cidx, cell_value, stored):
+    text = str(cell_value or "").strip().lower()
+    if re.search(r"\(\s*lab\b", text):
+        return True
+    organized = stored.get("organized", {}) if isinstance(stored, dict) else {}
+    class_keys = list(organized.keys())
+    if 0 <= cidx < len(class_keys):
+        norm = _normalise_subject(cell_value)
+        return any(
+            _normalise_subject(row.get("subject", "")) == norm
+            and str(row.get("type", "theory")).lower().strip() == "lab"
+            for row in organized.get(class_keys[cidx], [])
+        )
+    return False
+
+
+def _fixed_entry_for_slot(meta, class_idx, slot_idx):
+    fixed = meta.get("fixed_slots", {}) if isinstance(meta, dict) else {}
+    entries = fixed.get(str(class_idx), {}) if isinstance(fixed, dict) else {}
+    periods = int(meta.get("periods", 0) or 0) if isinstance(meta, dict) else 0
+    for raw_slot, info in (entries or {}).items():
+        try:
+            flat = int(raw_slot)
+        except (TypeError, ValueError):
+            try:
+                d, p = map(int, str(raw_slot).split("-", 1))
+                flat = d * periods + p
+            except Exception:
+                continue
+        if flat == slot_idx and isinstance(info, dict) and info.get("label") and info.get("teacher_id", "__none__") != "__none__":
+            return info
+    return None
 
 
 # ── Clear stale session directories on startup ───────────────────────────────
@@ -224,20 +347,32 @@ def upload_pdf():
     if not file or file.filename == '':
         return "No file selected", 400
 
-    pdf_path = os.path.join(app.config['UPLOAD_FOLDER'], "uploaded_schedule.pdf")
-    file.save(pdf_path)
-    
+    pdf_path = spath(f"upload_{uuid.uuid4().hex}.pdf")
     try:
-        raw_data = get_solver_data_from_pdf(pdf_path) 
+        header = file.stream.read(1024)
+        file.stream.seek(0)
+        if b"%PDF-" not in header:
+            return "The uploaded file is not a valid PDF.", 400
+        file.save(pdf_path)
+        raw_data = get_solver_data_from_pdf(pdf_path)
+        if not isinstance(raw_data, dict) or not (
+            raw_data.get("class_teacher_periods") or raw_data.get("lab_teacher_periods")
+        ):
+            return "AI extraction returned no timetable data.", 422
         with open(spath("last_extraction.json"), "w") as f:
             json.dump(raw_data, f)
 
-        return redirect(url_for('generate'))
+        return redirect(url_for("generate"))
         
     except Exception as e:
-        import traceback
         print(traceback.format_exc())
-        return f"AI Extraction Failed: {str(e)}", 500
+        return f"AI Extraction Failed: {escape(str(e))}", 500
+    finally:
+        try:
+            if os.path.exists(pdf_path):
+                os.remove(pdf_path)
+        except OSError:
+            pass
 
 @app.route("/upload-xml", methods=["POST"])
 def upload_xml():
@@ -253,10 +388,8 @@ def upload_xml():
         return jsonify({"status": "error", "message": "File must be XML"}), 400
     
     try:
-        xml_path = os.path.join(app.config['UPLOAD_FOLDER'], "uploaded_schedule.xml")
+        xml_path = spath(f"upload_{uuid.uuid4().hex}.xml")
         file.save(xml_path)
-        
-        # Parse XML
         data = parse_xml_timetable(xml_path)
         
         # Save as temp_web_data for /generate to use
@@ -266,10 +399,16 @@ def upload_xml():
         return jsonify({
             "status": "success",
             "message": "XML uploaded and parsed successfully",
-            "redirect": "/generate"
+            "redirect": url_for("generate")
         })
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": str(e)}), 400
+    finally:
+        try:
+            if os.path.exists(xml_path):
+                os.remove(xml_path)
+        except OSError:
+            pass
 
     
 @app.route("/generate")
@@ -303,7 +442,11 @@ def generate():
                 display_data.append({
                     "class": f"Class {class_id}",
                     "subject": subj,
-                    "teacher": teacher_map.get(t_id, {}).get('Name', f"S{t_id}"),
+                    "teacher": (
+    teacher_map.get(t_id, {}).get("Name")
+    or teacher_map.get(t_id, {}).get("name")
+    or f"S{t_id}"
+),
                     "type": "Theory",
                     "periods": p_val,
                     "split_children_json": "[]"
@@ -386,6 +529,7 @@ def download_excel():
     try:
         import openpyxl
         from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
 
         if not os.path.exists(spath("generated_timetable.json")) or \
            not os.path.exists(spath("generated_metadata.json")) or \
@@ -442,9 +586,10 @@ def download_excel():
 
         wb = openpyxl.Workbook()
         wb.remove(wb.active)
+        used_sheet_titles = set()
 
         for cls_idx, cls_name in zip(class_indices, class_names):
-            ws = wb.create_sheet(title=f"Class {cls_name}"[:31])
+            ws = wb.create_sheet(title=_safe_sheet_title(f"Class {cls_name}", "Class", used_sheet_titles))
 
             # Header row: Day | P1 | P2 | P3 | ...
             ws.row_dimensions[1].height = 26
@@ -457,10 +602,8 @@ def download_excel():
                 c.alignment = mk_center()
                 c.border    = mk_border()
 
-            col_letters = list("BCDEFGHIJKLMNOPQRSTUVWXYZ")
             for p in range(periods):
-                if p < len(col_letters):
-                    ws.column_dimensions[col_letters[p]].width = 24
+                ws.column_dimensions[get_column_letter(p + 2)].width = 24
 
             # Data rows — one row per day
             for d in range(days):
@@ -496,7 +639,7 @@ def download_excel():
             output,
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             as_attachment=True,
-            download_name=fname
+            download_name=_safe_download_stem(fname, "timetable.xlsx")
         )
     
     except Exception as e:
@@ -599,7 +742,7 @@ def download_pdf():
 
         story = []
         for cls_idx, cls_name in zip(class_indices, class_names):
-            story.append(Paragraph(f"Class {cls_name} — Timetable", title_s))
+            story.append(Paragraph(escape(f"Class {cls_name} — Timetable"), title_s))
 
             # Build table rows: header + one row per day
             header = ["Day"] + [f"P{p+1}" for p in range(periods)]
@@ -610,11 +753,11 @@ def download_pdf():
             lab_cells  = []
 
             for d in range(days):
-                row = [Paragraph(day_labels[d], cell_s)]
+                row = [Paragraph(escape(day_labels[d]), cell_s)]
                 for p in range(periods):
                     text, kind = _cell_text(timetable, cls_idx, d, p, periods)
                     style = free_s if kind == "free" else cell_s
-                    row.append(Paragraph(text, style))
+                    row.append(Paragraph(escape(text), style))
                     if kind == "free":
                         free_cells.append((p+1, d+1))   # col, row
                     elif kind == "lab":
@@ -680,20 +823,9 @@ def download_pdf():
 #  TEACHER TIMETABLE HELPER
 # ─────────────────────────────────────────────────────────────────────────────
 def _build_teacher_timetable(teacher_name, timetable, stored, days, periods, num_classes):
-    """Return a days×periods grid for one teacher.
-    Each cell: "" (free) or "SubjectName\n(ClassName)".
-    """
-    organized  = stored.get("organized", {})
+    """Return a days×periods grid for one teacher."""
+    organized = stored.get("organized", {})
     class_keys = list(organized.keys())
-    subj_teacher = {}
-    for cidx, cname in enumerate(class_keys):
-        for t in organized[cname]:
-            key = (cidx, t["subject"].lower().strip())
-            subj_teacher[key] = t["teacher"]
-            stripped = re.sub(r"\s*\(lab[^)]*\)", "", t["subject"], flags=re.IGNORECASE).lower().strip()
-            if stripped != t["subject"].lower().strip():
-                subj_teacher[(cidx, stripped)] = t["teacher"]
-
     grid = [["" for _ in range(periods)] for _ in range(days)]
     for day in range(days):
         for p in range(periods):
@@ -703,20 +835,11 @@ def _build_teacher_timetable(teacher_name, timetable, stored, days, periods, num
                     cell = timetable[si][cidx]
                 except (IndexError, KeyError, TypeError):
                     continue
-                if not cell or cell == 0 or str(cell).strip().lower() in ("", "free", "0"):
+                if not cell or str(cell).strip().lower() in ("", "free", "0"):
                     continue
-                cell_str  = str(cell).strip()
-                cell_norm = re.sub(r"\s*\(lab[^)]*\)", "", cell_str, flags=re.IGNORECASE).lower().strip()
-                tname = (subj_teacher.get((cidx, cell_str.lower().strip())) or
-                         subj_teacher.get((cidx, cell_norm)))
-                if not tname:
-                    for (c2, subj), tn in subj_teacher.items():
-                        if c2 == cidx and cell_norm.startswith(subj[:6]):
-                            tname = tn
-                            break
-                if tname == teacher_name:
+                if teacher_name in _teachers_for_cell(cidx, cell, stored):
                     cname_label = class_keys[cidx] if cidx < len(class_keys) else str(cidx)
-                    grid[day][p] = f"{cell_str}\n({cname_label})"
+                    grid[day][p] = f"{cell}\n({cname_label})"
     return grid
 
 
@@ -761,7 +884,7 @@ def download_teacher_pdf():
         doc = SimpleDocTemplate(output, pagesize=landscape(A4),
                                 leftMargin=1.5*cm, rightMargin=1.5*cm,
                                 topMargin=1.5*cm,  bottomMargin=1.5*cm)
-        story = [Paragraph(f"Teacher Timetable — {teacher_name}", title_s)]
+        story = [Paragraph(escape(f"Teacher Timetable — {teacher_name}"), title_s)]
         header = ["Day"] + [f"P{p+1}" for p in range(periods)]
         rows   = [header]
         free_cells = []
@@ -770,7 +893,7 @@ def download_teacher_pdf():
             for p in range(periods):
                 text = grid[d][p]
                 if text:
-                    row.append(Paragraph(text.replace("\n", "<br/>"), cell_s))
+                    row.append(Paragraph(escape(text).replace("\n", "<br/>"), cell_s))
                 else:
                     row.append(Paragraph("Free", free_s))
                     free_cells.append((p + 1, d + 1))
@@ -793,7 +916,7 @@ def download_teacher_pdf():
         doc.build(story); output.seek(0)
         safe = re.sub(r"[^\w\-]", "_", teacher_name)
         return send_file(output, mimetype="application/pdf", as_attachment=True,
-                         download_name=f"timetable_teacher_{safe}.pdf")
+                         download_name=f"timetable_teacher_{_safe_download_stem(safe, 'teacher')}.pdf")
     except Exception as e:
         print(f"TEACHER PDF ERROR: {traceback.format_exc()}")
         return jsonify({"status":"error","message":str(e)}), 500
@@ -833,11 +956,11 @@ def download_teacher_excel():
                                        top=Side(style="thin"),  bottom=Side(style="thin"))
         def mk_center(): return Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-        wb = openpyxl.Workbook(); ws = wb.active; ws.title = teacher_name[:31]
+        wb = openpyxl.Workbook(); ws = wb.active; ws.title = _safe_sheet_title(teacher_name, "Teacher", set())
         ws.row_dimensions[1].height = 26; ws.column_dimensions["A"].width = 14
-        col_letters = list("BCDEFGHIJKLMNOPQRSTUVWXYZ")
+        from openpyxl.utils import get_column_letter
         for p in range(periods):
-            if p < len(col_letters): ws.column_dimensions[col_letters[p]].width = 26
+            ws.column_dimensions[get_column_letter(p + 2)].width = 26
 
         for col, label in enumerate(["Day"] + [f"P{p+1}" for p in range(periods)]):
             c = ws.cell(row=1, column=col+1, value=label)
@@ -858,7 +981,7 @@ def download_teacher_excel():
         safe = re.sub(r"[^\w\-]", "_", teacher_name)
         return send_file(output,
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            as_attachment=True, download_name=f"timetable_teacher_{safe}.xlsx")
+            as_attachment=True, download_name=f"timetable_teacher_{_safe_download_stem(safe, 'teacher')}.xlsx")
     except Exception as e:
         print(f"TEACHER EXCEL ERROR: {traceback.format_exc()}")
         return jsonify({"status":"error","message":str(e)}), 500
@@ -899,14 +1022,9 @@ def teacher_cell_map():
                     if not cell or cell == 0 or str(cell).strip().lower() in ("","free","0"): continue
                     cell_str  = str(cell).strip()
                     cell_norm = re.sub(r"\s*\(lab[^)]*\)", "", cell_str, flags=re.IGNORECASE).lower().strip()
-                    tname = (subj_teacher.get((cidx, cell_str.lower().strip())) or
-                             subj_teacher.get((cidx, cell_norm)))
-                    if not tname:
-                        for (c2, subj), tn in subj_teacher.items():
-                            if c2 == cidx and cell_norm.startswith(subj[:6]):
-                                tname = tn; break
-                    if tname:
-                        cell_map[f"{cidx}-{si}"] = tname
+                    teachers = _teachers_for_cell(cidx, cell, stored)
+                    if teachers:
+                        cell_map[f"{cidx}-{si}"] = ", ".join(sorted(teachers))
         return jsonify(cell_map)
     except Exception as e:
         print(f"TEACHER CELL MAP ERROR: {traceback.format_exc()}")
@@ -916,42 +1034,25 @@ def teacher_cell_map():
 # CLEANED: Only one version of success_summary using dynamic metadata
 @app.route("/success-summary")
 def success_summary():
-    if not os.path.exists(spath("generated_timetable.json")) or not os.path.exists(spath("generated_metadata.json")):
-        return redirect(url_for('home'))
+    if not all(os.path.exists(spath(fn)) for fn in ("generated_timetable.json", "generated_metadata.json", "last_extraction.json")):
+        return redirect(url_for("home"))
 
     with open(spath("generated_timetable.json"), "r") as f:
         timetable = json.load(f)
     with open(spath("generated_metadata.json"), "r") as f:
         meta = json.load(f)
-    with open(spath("final_schedule.json"), "r") as f:
-        final_data = json.load(f)
     with open(spath("last_extraction.json"), "r") as f:
         stored = json.load(f)
 
-    days        = meta['days']
-    periods     = meta['periods']
-    num_classes = meta['num_classes']
-
-    class_names_raw = list(dict.fromkeys([row['class'] for row in final_data]))
-    # Strip "Class " prefix stored in final_schedule
-    class_names = [c.replace("Class ", "").strip() for c in class_names_raw]
+    days = int(meta.get("days", 6))
+    periods = int(meta.get("periods", 6))
+    num_classes = int(meta.get("num_classes", 0))
+    organized = stored.get("organized", {})
+    class_names = list(organized.keys())
 
     # ── Build teacher_slot_map: {teacher_name: ["classIdx-slotIdx", ...]} ──────
     # We need to know which teacher teaches each subject in each class
-    organized = stored.get('organized', {})
-    # subject->teacher lookup per class (also store normalized key for labs)
-    subj_teacher = {}  # (class_idx, subject_lower_stripped) -> teacher_name
-    for cidx, cname in enumerate(organized.keys()):
-        for t in organized[cname]:
-            # Primary key: exact subject name lowered
-            key = (cidx, t['subject'].lower().strip())
-            subj_teacher[key] = t['teacher']
-            # Secondary key: strip "(lab N)" suffix so "Physics (Lab 1)" matches "Physics"
-            import re as _re
-            stripped = _re.sub(r'\s*\(lab[^)]*\)', '', t['subject'], flags=_re.IGNORECASE).lower().strip()
-            if stripped != t['subject'].lower().strip():
-                subj_teacher[(cidx, stripped)] = t['teacher']
-
+    organized = stored.get("organized", {})
     teacher_slot_map = {}   # teacher_name -> [classIdx-slotIdx]
     teacher_names_set = set()
     for cidx in range(num_classes):
@@ -964,72 +1065,52 @@ def success_summary():
                     continue
                 if not cell or cell == 0 or str(cell).lower() in ('free', 'f', '0'):
                     continue
-                cell_str = str(cell).strip()
-                import re as _re
-                cell_norm = _re.sub(r'\s*\(lab[^)]*\)', '', cell_str, flags=_re.IGNORECASE).lower().strip()
-
-                # Try exact match first, then stripped match, then prefix match
-                key_exact   = (cidx, cell_str.lower().strip())
-                key_stripped = (cidx, cell_norm)
-                tname = subj_teacher.get(key_exact) or subj_teacher.get(key_stripped)
-                if not tname:
-                    # prefix fallback: find any subject that starts with first 6 chars
-                    for (c2, subj), tn in subj_teacher.items():
-                        if c2 == cidx and cell_norm.startswith(subj[:6]):
-                            tname = tn
-                            break
-                if tname:
-                    teacher_names_set.add(tname)
-                    teacher_slot_map.setdefault(tname, []).append(f"{cidx}-{si}")
-
-                # Also register sub-teachers for split blocks (e.g. "II Language" → aa, bb)
-                # so they appear in the By Teacher view and are marked busy at these slots.
-                # Bundle names are now "BlockName|ClassName" — use display_name for cell match.
-                for bundle in (stored.get('auto_bundles', []) + stored.get('sync_groups', [])):
-                    bname_display = bundle.get('display_name', bundle.get('name', ''))
-                    bname_lower = bname_display.lower().strip()
-                    if bname_lower in (cell_norm, cell_str.lower().strip()):
-                        for m in bundle.get('members', []):
-                            if int(m.get('classIdx', -1)) == cidx:
-                                sub_t = m.get('teacherName', '')
-                                if sub_t and sub_t != tname:
-                                    teacher_names_set.add(sub_t)
-                                    teacher_slot_map.setdefault(sub_t, []).append(f"{cidx}-{si}")
+                for teacher in _teachers_for_cell(cidx, cell, stored):
+                    teacher_names_set.add(teacher)
+                    teacher_slot_map.setdefault(teacher, []).append(f"{cidx}-{si}")
 
     teacher_names = sorted(teacher_names_set)
 
     # ── Build sync-group exempt set ───────────────────────────────────────────
     # Sync groups intentionally place the same teacher in multiple classes at
     # the same slot. Build (tname, slot_idx) pairs to skip in conflict detection.
-    sync_exempt = set()   # {(teacher_name, slot_idx), ...}
-    # Re-stamp auto_bundle classIdx using className before using them
-    # (saved bundles can have stale indices; this ensures correct class matching)
-    _ck = list(stored.get('organized', {}).keys())
-    _fixed_abs = []
-    for _ab in stored.get('auto_bundles', []):
-        _fm = []
-        for _m in _ab.get('members', []):
-            _cn = _m.get('className', '').replace('Class ', '').strip()
-            try: _idx = _ck.index(_cn)
-            except ValueError: _idx = _m.get('classIdx', -1)
-            _mf = dict(_m); _mf['classIdx'] = _idx; _fm.append(_mf)
-        _fab = dict(_ab); _fab['members'] = _fm; _fixed_abs.append(_fab)
-    # Include both UI-created sync_groups and auto-built bundles from Split rows
-    sync_groups_stored = stored.get('sync_groups', []) + _fixed_abs
-    for sg in sync_groups_stored:
-        members = sg.get('members', [])
-        if not members:
+    _ck = list(stored.get("organized", {}).keys())
+    _bundles = []
+    for _raw in (stored.get("auto_bundles", []) or []) + (stored.get("sync_groups", []) or []):
+        if not isinstance(_raw, dict):
             continue
-        # Exempt ALL member teachers from conflict detection — whether they're
-        # shared across classes (multi-class sync) or are sub-teachers within
-        # one class (intra-class split like II Language with eng/sans).
-        # Without this, intra-class sub-teachers get double-counted as conflicts.
-        all_member_teachers = {m.get('teacherName', '') for m in members if m.get('teacherName')}
-        for tname_sg in all_member_teachers:
-            if tname_sg in teacher_slot_map:
-                for slot_str in teacher_slot_map[tname_sg]:
-                    _, si_str = slot_str.split('-')
-                    sync_exempt.add((tname_sg, int(si_str)))
+        _members = []
+        for _m in _raw.get("members", []) or []:
+            _mf = dict(_m)
+            _mf["classIdx"] = _resolve_class_index(_ck, _m)
+            _members.append(_mf)
+        _b = dict(_raw); _b["members"] = _members
+        _bundles.append(_b)
+
+    sync_groups_stored = []
+    _seen_bundle_keys = set()
+    for _b in _bundles:
+        _key = (
+            str(_b.get("name", "")),
+            tuple(sorted((int(m.get("classIdx", -1)), str(m.get("teacherName", "")), str(m.get("subject", "")))
+                         for m in _b.get("members", [])))
+        )
+        if _key not in _seen_bundle_keys:
+            _seen_bundle_keys.add(_key)
+            sync_groups_stored.append(_b)
+
+    sync_allowed = {}
+    for _sg in sync_groups_stored:
+        for _m in _sg.get("members", []):
+            _t = str(_m.get("teacherName", "")).strip()
+            _c = int(_m.get("classIdx", -1))
+            if not _t or _c < 0:
+                continue
+            for _slot_ref in teacher_slot_map.get(_t, []):
+                _ci, _si = _slot_ref.split("-", 1)
+                if int(_ci) == _c:
+                    sync_allowed.setdefault((_t, int(_si)), set()).add(_c)
+
 
     # ── Conflict checker: same teacher in 2 DIFFERENT classes at same slot ────
     # Use a SET of class indices so duplicate entries for the same class
@@ -1043,8 +1124,9 @@ def success_summary():
             slot_teacher_classes.setdefault(key, set()).add(int(cidx_str))
     for (tname, si), cidxs in slot_teacher_classes.items():
         if len(cidxs) > 1:  # only a real conflict if teacher in 2+ DIFFERENT classes
-            # Skip if this (teacher, slot) is an intentional sync group assignment
-            if (tname, si) in sync_exempt:
+            # Exempt only when every class using this teacher at this slot is
+            # explicitly covered by the same sync bundle.
+            if cidxs == sync_allowed.get((tname, si), set()):
                 continue
             for cidx in cidxs:
                 conflicts.append([cidx, si])
@@ -1083,10 +1165,23 @@ def success_summary():
 @app.route("/update-data", methods=["POST"])
 def update_data():
     try:
-        incoming_payload = request.get_json()
-        web_data     = incoming_payload.get('table_data', [])
-        config       = incoming_payload.get('config', {})
-        split_groups = incoming_payload.get('split_groups', [])  # NEW: from Split rows
+        incoming_payload = request.get_json(silent=True)
+        if not isinstance(incoming_payload, dict):
+            return jsonify({"status": "error", "message": "Invalid JSON payload."}), 400
+        web_data = incoming_payload.get("table_data", [])
+        config = incoming_payload.get("config", {})
+        split_groups = incoming_payload.get("split_groups", [])
+        if not isinstance(web_data, list) or not isinstance(config, dict) or not isinstance(split_groups, list):
+            return jsonify({"status": "error", "message": "Malformed timetable data."}), 400
+        if len(web_data) > 1000:
+            return jsonify({"status": "error", "message": "Too many timetable rows."}), 413
+        try:
+            days_cfg, periods_cfg = _validate_week_config(config.get("days", 6), config.get("periods", 6))
+            labs_cfg = int(config.get("labs", 2))
+        except (TypeError, ValueError):
+            return jsonify({"status": "error", "message": "Invalid school configuration."}), 400
+        if not (1 <= labs_cfg <= 50):
+            return jsonify({"status": "error", "message": "Labs must be between 1 and 50."}), 400
 
         # Map teacher names to stable numeric IDs. This used to just be
         # `{name: i for i, name in enumerate(sorted(all_teachers))}` recomputed
@@ -1096,7 +1191,11 @@ def update_data():
         # teacher_id already baked into a saved fixed slot or sync group from
         # an earlier /update-data call would now point at the wrong teacher.
         # Persist the mapping per session and only ever append new names.
-        all_teachers = sorted(set(row['teacher'] for row in web_data))
+        all_teachers = sorted({
+            str(row.get("teacher", "")).strip()
+            for row in web_data
+            if str(row.get("teacher", "")).strip()
+        })
         teacher_map_path = spath("teacher_id_map.json")
         t_name_to_id = {}
         if os.path.exists(teacher_map_path):
@@ -1119,11 +1218,17 @@ def update_data():
 
         organized_classes = {}
         for row in web_data:
-            c_name = row['class'].replace("Class ", "").strip()
+            c_name = str(row.get("class", "")).replace("Class ", "").strip()
+            if not c_name or len(c_name) > 120:
+                raise ValueError("Every row must have a valid class name (1–120 characters).")
             if c_name not in organized_classes:
                 organized_classes[c_name] = []
 
-            split_block = row.get('split_block', '').strip()
+            split_block = str(row.get("split_block", "") or "").strip()
+            subject_text = str(row.get("subject", "") or "").strip()
+            teacher_text = str(row.get("teacher", "") or "").strip()
+            if len(subject_text) > 160 or len(teacher_text) > 160:
+                raise ValueError("Subject and teacher names must be 160 characters or fewer.")
 
             if split_block:
                 # This row is a sub-option of a split block.
@@ -1138,7 +1243,7 @@ def update_data():
                     # Use the first sub-option's teacher as the "primary" teacher
                     # for the block row — the bundle will mark all sub-teachers busy.
                     organized_classes[c_name].append({
-                        "teacher":     row.get('teacher', 'Unknown'),
+                        "teacher":     teacher_text,
                         "teacher_id":  t_name_to_id.get(row.get('teacher'), 99),
                         "subject":     split_block,   # block name IS the subject in timetable
                         "hours":       int(row.get('periods', 0)),
@@ -1152,14 +1257,34 @@ def update_data():
                 # — it would add extra hours to the class workload
                 continue
 
+            if not subject_text or not teacher_text:
+                raise ValueError(f"Class {c_name}: subject and teacher are required.")
+            row_type = str(row.get("type", "theory")).lower().strip()
+            if row_type not in ("theory", "lab"):
+                raise ValueError(f"Class {c_name}: invalid subject type.")
+            hours_value = int(row.get("periods", 0))
+            if hours_value < 1:
+                raise ValueError(f"Class {c_name}: hours must be at least 1.")
+            continuous_value = int(row.get("continuous", 1))
+            lab_no_value = int(row.get("lab_no", 0))
+            if row_type == "lab":
+                if continuous_value < 1 or continuous_value > periods_cfg:
+                    raise ValueError(f"Class {c_name}: lab block length is invalid.")
+                if hours_value % continuous_value:
+                    raise ValueError(f"Class {c_name}: lab total hours must be divisible by block length.")
+                if not (1 <= lab_no_value <= labs_cfg):
+                    raise ValueError(f"Class {c_name}: lab room must be between 1 and {labs_cfg}.")
+            else:
+                continuous_value, lab_no_value = 1, 0
+
             organized_classes[c_name].append({
-                "teacher":    row.get('teacher', 'Unknown'),
-                "teacher_id": t_name_to_id.get(row.get('teacher'), 99),
-                "subject":    row.get('subject', 'General'),
-                "hours":      int(row.get('periods', 0)),
-                "type":       str(row.get('type', 'theory')).lower().strip(),
-                "continuous": int(row.get('continuous', 1)),
-                "lab_no":     int(row.get('lab_no', 0)),
+                "teacher": teacher_text,
+                "teacher_id": t_name_to_id.get(teacher_text, 99),
+                "subject": subject_text,
+                "hours": hours_value,
+                "type": row_type,
+                "continuous": continuous_value,
+                "lab_no": lab_no_value,
                 "split_block": '',
             })
 
@@ -1214,12 +1339,15 @@ def update_data():
             else:
                 logging.info(f"Auto-bundle for '{block_name}' in {cname}: fewer than 2 sub-options — skipping.")
 
-        merge_groups = incoming_payload.get('merge_groups', [])
+        merge_groups = incoming_payload.get("merge_groups", [])
+        if not isinstance(merge_groups, list):
+            return jsonify({"status": "error", "message": "Malformed merge-group data."}), 400
 
         session_data = {
             "organized":      organized_classes,
-            "days":           int(config.get('days', 6)),
-            "periods":        int(config.get('periods', 6)),
+            "days": days_cfg,
+            "periods": periods_cfg,
+            "labs": labs_cfg,
             "session_token":  str(__import__('uuid').uuid4()),
             "auto_bundles":   auto_bundles,
             "merge_groups":   merge_groups,
@@ -1243,8 +1371,12 @@ def load_verify():
       - upload page "Enter Manually" (after class names, before subjects)
     """
     try:
-        payload      = request.get_json()
-        rows         = payload.get("rows", [])
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"status": "error", "message": "Invalid JSON payload."}), 400
+        rows = payload.get("rows", [])
+        if not isinstance(rows, list) or len(rows) > 1000:
+            return jsonify({"status": "error", "message": "Invalid saved timetable rows."}), 400
         days         = int(payload.get("days", 6))
         periods      = int(payload.get("periods", 6))
         labs         = int(payload.get("labs", 2))
@@ -1339,10 +1471,14 @@ def load_save():
     and returns a new session_token so fixed_setup can match localStorage.
     """
     try:
-        payload       = request.get_json()
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"status": "error", "message": "Invalid JSON payload."}), 400
         temp_web_data = payload.get("temp_web_data")
-        if not temp_web_data:
-            return jsonify({"status": "error", "message": "No temp_web_data in payload"}), 400
+        if not isinstance(temp_web_data, dict):
+            return jsonify({"status": "error", "message": "No valid saved timetable data supplied."}), 400
+        if len(json.dumps(temp_web_data, ensure_ascii=False)) > 5_000_000:
+            return jsonify({"status": "error", "message": "Saved timetable file is too large."}), 413
 
         # Issue a fresh session token — client will write this into localStorage
         # so fixed_setup.html trusts and loads the restored session data.
@@ -1413,10 +1549,14 @@ def setup_fixed():
 @app.route("/run-final-solver", methods=["POST"])
 def run_final_solver():
     try:
-        payload        = request.get_json()
-        fixed_data     = payload.get('fixed_slots', {})
-        unavail_data   = payload.get('teacher_unavailability', {})
-        elective_bundles = payload.get('elective_bundles', [])
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"status": "error", "message": "Invalid JSON payload."}), 400
+        fixed_data = payload.get("fixed_slots", {})
+        unavail_data = payload.get("teacher_unavailability", {})
+        elective_bundles = payload.get("elective_bundles", [])
+        if not isinstance(fixed_data, dict) or not isinstance(unavail_data, dict) or not isinstance(elective_bundles, list):
+            return jsonify({"status": "error", "message": "Malformed solver input."}), 400
 
         if not os.path.exists(spath("last_extraction.json")):
             return jsonify({"status": "error", "message": "Session expired. Please restart."}), 400
@@ -1551,9 +1691,12 @@ def run_final_solver():
             # 1. Save metadata for the success page
             with open(spath("generated_metadata.json"), "w") as f:
                 json.dump({
-                    "days": stored['days'], 
-                    "periods": stored['periods'], 
-                    "num_classes": No_of_classes
+                    "days": stored["days"],
+                    "periods": stored["periods"],
+                    "num_classes": No_of_classes,
+                    "fixed_slots": fixed_data,
+                    "teacher_unavailability": unavail_data,
+                    "solver_bundles": solver_bundles
                 }, f)
             
             # 2. Save the actual timetable
@@ -1771,119 +1914,88 @@ def run_final_solver():
 @app.route("/swap-slots", methods=["POST"])
 def swap_slots():
     try:
-        data      = request.get_json()
-        class_idx = int(data['class_idx'])
-        si1       = int(data['slot1'])
-        si2       = int(data['slot2'])
-
-        if not os.path.exists(spath("generated_timetable.json")):
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({"status": "error", "message": "Invalid JSON payload."}), 400
+        try:
+            class_idx, si1, si2 = int(data["class_idx"]), int(data["slot1"]), int(data["slot2"])
+        except (KeyError, TypeError, ValueError):
+            return jsonify({"status": "error", "message": "class_idx, slot1 and slot2 are required integers."}), 400
+        if si1 == si2:
+            return jsonify({"status": "success"})
+        required = ("generated_timetable.json", "generated_metadata.json", "last_extraction.json")
+        if not all(os.path.exists(spath(fn)) for fn in required):
             return jsonify({"status": "error", "message": "No timetable found"}), 404
-
         with open(spath("generated_timetable.json")) as f:
             timetable = json.load(f)
+        with open(spath("generated_metadata.json")) as f:
+            meta = json.load(f)
+        with open(spath("last_extraction.json")) as f:
+            stored = json.load(f)
 
-        if not (0 <= si1 < len(timetable)) or not (0 <= si2 < len(timetable)):
-            return jsonify({"status": "error", "message": "Slot index out of range"}), 400
-        if class_idx < 0 or class_idx >= len(timetable[si1]) or class_idx >= len(timetable[si2]):
+        days, periods = int(meta["days"]), int(meta["periods"])
+        num_classes = int(meta["num_classes"])
+        total_slots = days * periods
+        if not (0 <= class_idx < num_classes):
             return jsonify({"status": "error", "message": "Class index out of range"}), 400
+        if not (0 <= si1 < total_slots) or not (0 <= si2 < total_slots):
+            return jsonify({"status": "error", "message": "Slot index out of range"}), 400
+        if len(timetable) < total_slots or any(
+            not isinstance(timetable[s], list) or len(timetable[s]) < num_classes for s in (si1, si2)
+        ):
+            return jsonify({"status": "error", "message": "Malformed timetable data."}), 500
 
-        # ── Server-side validation ──────────────────────────────────────────
-        # This endpoint used to swap the two cells with zero validation,
-        # relying entirely on the frontend's own safety checks before it ever
-        # sent the request. Any direct call here (or a bug in the frontend
-        # logic) could double-book a teacher across classes or duplicate a
-        # subject on the same day with nothing to stop it. Reject those cases
-        # server-side too, using the same subject→teacher lookup
-        # success_summary() already builds for conflict display.
-        def is_real(val):
-            return val not in (0, None) and str(val).strip().lower() not in ('', 'free', '0')
+        val1, val2 = timetable[si1][class_idx], timetable[si2][class_idx]
+        if _fixed_entry_for_slot(meta, class_idx, si1) or _fixed_entry_for_slot(meta, class_idx, si2):
+            return jsonify({"status": "error", "message": "Fixed slots cannot be moved. Clear the fixed slot and regenerate."}), 409
 
-        val1 = timetable[si1][class_idx]  # currently at si1, would move to si2
-        val2 = timetable[si2][class_idx]  # currently at si2, would move to si1
+        # A lab occupies a consecutive block; the endpoint receives individual pairs,
+        # so never permit a partial lab move through this API.
+        if _is_lab_cell(class_idx, val1, stored) or _is_lab_cell(class_idx, val2, stored):
+            return jsonify({"status": "error", "message": "Lab blocks cannot be moved with the single-slot swap."}), 409
 
-        if is_real(val1) or is_real(val2):
-            teacher_by_class_subject = {}
-            if os.path.exists(spath("last_extraction.json")):
-                with open(spath("last_extraction.json")) as f:
-                    stored = json.load(f)
-                organized = stored.get('organized', {})
-                for cidx, cname in enumerate(organized.keys()):
-                    for t in organized[cname]:
-                        subj = str(t.get('subject', ''))
-                        teacher_by_class_subject[(cidx, subj.lower().strip())] = t.get('teacher')
-                        stripped = re.sub(r'\s*\(lab[^)]*\)', '', subj, flags=re.IGNORECASE).lower().strip()
-                        if stripped != subj.lower().strip():
-                            teacher_by_class_subject[(cidx, stripped)] = t.get('teacher')
+        def real(v):
+            return v not in (0, None) and str(v).strip().lower() not in ("", "free", "0")
 
-            def teacher_for(cidx, val):
-                if not is_real(val):
-                    return None
-                s = str(val).strip()
-                norm = re.sub(r'\s*\(lab[^)]*\)', '', s, flags=re.IGNORECASE).lower().strip()
-                return teacher_by_class_subject.get((cidx, s.lower())) or teacher_by_class_subject.get((cidx, norm))
-
-            def teacher_busy_elsewhere(teacher_name, slot, exclude_class):
-                if not teacher_name:
-                    return False
-                row = timetable[slot]
-                for other_cidx, cell in enumerate(row):
-                    if other_cidx == exclude_class:
-                        continue
-                    if teacher_for(other_cidx, cell) == teacher_name:
-                        return True
+        def teacher_busy(teacher, slot):
+            if not teacher:
                 return False
+            return any(
+                other != class_idx and teacher in _teachers_for_cell(other, cell, stored)
+                for other, cell in enumerate(timetable[slot])
+            )
 
-            periods_per_day = None
-            if os.path.exists(spath("generated_metadata.json")):
-                with open(spath("generated_metadata.json")) as f:
-                    periods_per_day = json.load(f).get('periods')
+        if real(val1) or real(val2):
+            for teacher in _teachers_for_cell(class_idx, val1, stored):
+                if teacher_busy(teacher, si2):
+                    return jsonify({"status": "error", "message": f"Can't swap: {teacher} already teaches another class at that time."}), 409
+            for teacher in _teachers_for_cell(class_idx, val2, stored):
+                if teacher_busy(teacher, si1):
+                    return jsonify({"status": "error", "message": f"Can't swap: {teacher} already teaches another class at that time."}), 409
 
-            def subject_elsewhere_same_day(cidx, subject_val, target_slot, vacated_slot):
-                if not is_real(subject_val) or not periods_per_day:
+            def duplicate_same_day(value, target, vacated):
+                if not real(value):
                     return False
-                day = target_slot // periods_per_day
-                day_start = day * periods_per_day
-                for p in range(periods_per_day):
-                    s = day_start + p
-                    if s == target_slot or s == vacated_slot:
-                        continue
-                    if s < len(timetable) and str(timetable[s][cidx]).strip().lower() == str(subject_val).strip().lower():
-                        return True
-                return False
+                day_start = (target // periods) * periods
+                return any(
+                    slot not in (target, vacated)
+                    and str(timetable[slot][class_idx]).strip().lower() == str(value).strip().lower()
+                    for slot in range(day_start, day_start + periods)
+                )
+            if duplicate_same_day(val1, si2, si1):
+                return jsonify({"status": "error", "message": f"Can't swap: '{val1}' would appear twice on the same day for this class."}), 409
+            if duplicate_same_day(val2, si1, si2):
+                return jsonify({"status": "error", "message": f"Can't swap: '{val2}' would appear twice on the same day for this class."}), 409
 
-            t1 = teacher_for(class_idx, val1)
-            t2 = teacher_for(class_idx, val2)
-
-            if teacher_busy_elsewhere(t1, si2, class_idx):
-                return jsonify({"status": "error",
-                                "message": f"Can't swap: {t1} already teaches another class at that time."}), 409
-            if teacher_busy_elsewhere(t2, si1, class_idx):
-                return jsonify({"status": "error",
-                                "message": f"Can't swap: {t2} already teaches another class at that time."}), 409
-            if subject_elsewhere_same_day(class_idx, val1, si2, si1):
-                return jsonify({"status": "error",
-                                "message": f"Can't swap: '{val1}' would appear twice on the same day for this class."}), 409
-            if subject_elsewhere_same_day(class_idx, val2, si1, si2):
-                return jsonify({"status": "error",
-                                "message": f"Can't swap: '{val2}' would appear twice on the same day for this class."}), 409
-
-        # Swap the two slots for the given class
-        timetable[si1][class_idx], timetable[si2][class_idx] = \
-            timetable[si2][class_idx], timetable[si1][class_idx]
-
+        timetable[si1][class_idx], timetable[si2][class_idx] = val2, val1
         with open(spath("generated_timetable.json"), "w") as f:
             json.dump(timetable, f)
-
         return jsonify({"status": "success"})
-    except Exception as e:
-        import traceback; print(traceback.format_exc())
-        return jsonify({"status": "error", "message": str(e)}), 500
+    except Exception:
+        print(traceback.format_exc())
+        return jsonify({"status": "error", "message": "Swap failed due to an internal server error."}), 500
 
 if __name__ == "__main__":
-    # debug=True enables Werkzeug's interactive debugger, which allows
-    # arbitrary code execution from the browser if this port is ever reachable
-    # by anyone other than you. It was hardcoded on before — now it's opt-in
-    # via an explicit environment variable, and off by default.
     debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"
     port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port, debug=debug_mode)
+    app.run(host="0.0.0.0", port=port, debug=debug_mode)
