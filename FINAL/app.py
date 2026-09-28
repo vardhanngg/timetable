@@ -1379,8 +1379,12 @@ def load_verify():
       - upload page "Enter Manually" (after class names, before subjects)
     """
     try:
-        payload      = request.get_json()
-        rows         = payload.get("rows", [])
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"status": "error", "message": "Invalid JSON payload."}), 400
+        rows = payload.get("rows", [])
+        if not isinstance(rows, list) or len(rows) > 1000:
+            return jsonify({"status": "error", "message": "Invalid saved timetable rows."}), 400
         days         = int(payload.get("days", 6))
         periods      = int(payload.get("periods", 6))
         labs         = int(payload.get("labs", 2))
@@ -1475,10 +1479,14 @@ def load_save():
     and returns a new session_token so fixed_setup can match localStorage.
     """
     try:
-        payload       = request.get_json()
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"status": "error", "message": "Invalid JSON payload."}), 400
         temp_web_data = payload.get("temp_web_data")
-        if not temp_web_data:
-            return jsonify({"status": "error", "message": "No temp_web_data in payload"}), 400
+        if not isinstance(temp_web_data, dict):
+            return jsonify({"status": "error", "message": "No valid saved timetable data supplied."}), 400
+        if len(json.dumps(temp_web_data, ensure_ascii=False)) > 5_000_000:
+            return jsonify({"status": "error", "message": "Saved timetable file is too large."}), 413
 
         # Issue a fresh session token — client will write this into localStorage
         # so fixed_setup.html trusts and loads the restored session data.
@@ -1549,10 +1557,14 @@ def setup_fixed():
 @app.route("/run-final-solver", methods=["POST"])
 def run_final_solver():
     try:
-        payload        = request.get_json()
-        fixed_data     = payload.get('fixed_slots', {})
-        unavail_data   = payload.get('teacher_unavailability', {})
-        elective_bundles = payload.get('elective_bundles', [])
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"status": "error", "message": "Invalid JSON payload."}), 400
+        fixed_data = payload.get("fixed_slots", {})
+        unavail_data = payload.get("teacher_unavailability", {})
+        elective_bundles = payload.get("elective_bundles", [])
+        if not isinstance(fixed_data, dict) or not isinstance(unavail_data, dict) or not isinstance(elective_bundles, list):
+            return jsonify({"status": "error", "message": "Malformed solver input."}), 400
 
         if not os.path.exists(spath("last_extraction.json")):
             return jsonify({"status": "error", "message": "Session expired. Please restart."}), 400
@@ -1687,9 +1699,12 @@ def run_final_solver():
             # 1. Save metadata for the success page
             with open(spath("generated_metadata.json"), "w") as f:
                 json.dump({
-                    "days": stored['days'], 
-                    "periods": stored['periods'], 
-                    "num_classes": No_of_classes
+                    "days": stored["days"],
+                    "periods": stored["periods"],
+                    "num_classes": No_of_classes,
+                    "fixed_slots": fixed_data,
+                    "teacher_unavailability": unavail_data,
+                    "solver_bundles": solver_bundles
                 }, f)
             
             # 2. Save the actual timetable
